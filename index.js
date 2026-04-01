@@ -1,3 +1,7 @@
+import 'react-native-reanimated'; // ✅ MUST BE FIRST
+// import 'react-native-gesture-handler'; // ✅ recommended
+
+
 import { registerRootComponent } from 'expo';
 
 import App from './App';

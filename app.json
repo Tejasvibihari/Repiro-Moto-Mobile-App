@@ -5,12 +5,12 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./src/assets/logo/logo300.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#FFF8EC"
     },
     "ios": {
       "supportsTablet": true
@@ -20,7 +20,13 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "statusBar": {
+        "barStyle": "dark-content",
+        "backgroundColor": "transparent",
+        "translucent": true
+      },
+      "package": "com.anonymous.repairoMotoApp"
     },
     "web": {
       "favicon": "./assets/favicon.png"
