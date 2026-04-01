@@ -6,7 +6,7 @@ export default function OrdersScreen({ navigation }) {
     return (
         <TabScreenWrapper navigation={navigation}>
             <View style={styles.content}>
-                <Text>Orders Screen</Text>
+                <Text>This is Orders Screen</Text>
             </View>
         </TabScreenWrapper>
     );

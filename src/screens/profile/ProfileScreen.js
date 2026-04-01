@@ -35,7 +35,7 @@ const MENU_ITEMS = [
         label: 'My Orders',
         icon: 'tools',
         iconLib: 'material',
-        route: 'MyOrders',
+        route: 'Orders',
     },
     {
         id: 'address',

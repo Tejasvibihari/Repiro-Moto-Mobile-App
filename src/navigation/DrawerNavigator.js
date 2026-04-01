@@ -38,7 +38,7 @@ import { getImageUrl } from '../utils/imageUtils';
 
 // Screens
 import BottomTabNavigator from '../components/common/BottomTabNavigator';
-import MyOrdersScreen from '../screens/order/OrderScreen';
+import OrdersScreen from '../screens/order/OrderScreen';
 import WalletScreen from '../screens/wallet/WalletScreen';
 
 import ReferEarnScreen from '../screens/refer/ReferEarnScreen';
@@ -51,7 +51,7 @@ const Drawer = createDrawerNavigator();
 // ─── Nav item config ──────────────────────────────────────────────────────────
 const GROUP_1 = [
     { name: 'Home', label: 'Home', icon: 'home-outline', iconActive: 'home', lib: 'ion' },
-    { name: 'MyOrders', label: 'My Orders', icon: 'construct-outline', iconActive: 'construct', lib: 'ion' },
+    { name: 'Orders', label: 'Orders', icon: 'construct-outline', iconActive: 'construct', lib: 'ion' },
     { name: 'Wallet', label: 'Wallet', icon: 'wallet-outline', iconActive: 'wallet', lib: 'ion' },
     { name: 'MyBikes', label: 'My Bikes', icon: 'bicycle', iconActive: 'bicycle', lib: 'mci' },
 ];
@@ -161,9 +161,12 @@ function CustomDrawerContent(props) {
 
     const navigate = (name) => {
         navigation.closeDrawer();
-        // 'Home' routes to the BottomTab root
         if (name === 'Home') {
             navigation.navigate('Home');
+        } else if (name === 'Wallet') {
+            navigation.navigate('Home', { screen: name });
+        } else if (name === 'Orders') {
+            navigation.navigate('Home', { screen: name });
         } else {
             navigation.navigate(name);
         }
@@ -416,7 +419,7 @@ export default function DrawerNavigator() {
             <Drawer.Screen name="Home" component={BottomTabNavigator} />
 
             {/* Full-screen drawer destinations */}
-            <Drawer.Screen name="MyOrders" component={MyOrdersScreen} />
+            <Drawer.Screen name="Orders" component={OrdersScreen} />
             <Drawer.Screen name="Wallet" component={WalletScreen} />
             <Drawer.Screen name="MyBikes" component={MyBikeScreen} />
             <Drawer.Screen name="ReferEarn" component={ReferEarnScreen} />

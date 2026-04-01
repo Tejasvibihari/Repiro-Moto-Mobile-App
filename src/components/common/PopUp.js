@@ -8,6 +8,7 @@ import {
     TouchableWithoutFeedback,
     Animated,
     Dimensions,
+    Platform,
 } from "react-native";
 import { useSelector } from "react-redux";
 import { LightTheme, DarkTheme } from "../../styles/Theme";
@@ -148,20 +149,34 @@ const PopUp = ({
                             borderColor: theme.colors.border,
                             transform: [{ scale: scaleAnim }],
                             opacity: opacityAnim,
-                            ...theme.shadow.soft,
+                            ...Platform.select({
+                                ios: {
+                                    shadowColor: '#000',
+                                    shadowOffset: { width: 0, height: 8 },
+                                    shadowOpacity: isDark ? 0.3 : 0.2,
+                                    shadowRadius: 24,
+                                },
+                                android: {
+                                    elevation: 16,
+                                },
+                            }),
                         },
                     ]}
                 >
                     {/* Close Icon */}
                     {showCloseIcon && onClose && (
-                        <TouchableOpacity style={styles.closeBtn} onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                            <Ionicons name="close" size={20} color={theme.colors.textMuted} />
+                        <TouchableOpacity
+                            style={styles.closeBtn}
+                            onPress={onClose}
+                            hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                        >
+                            <Ionicons name="close" size={24} color={theme.colors.textMuted} />
                         </TouchableOpacity>
                     )}
 
                     {/* Icon Badge */}
                     <View style={[styles.iconBadge, { backgroundColor: iconBg }]}>
-                        <Ionicons name={iconName} size={38} color={cfg.color} />
+                        <Ionicons name={iconName} size={42} color={cfg.color} />
                     </View>
 
                     {/* Title */}
@@ -178,29 +193,28 @@ const PopUp = ({
                         </Text>
                     )}
 
-                    {/* Divider */}
-                    <View style={[styles.divider, { backgroundColor: theme.colors.border }]} />
-
                     {/* Buttons */}
                     <View style={[styles.buttonRow, !secondaryLabel && styles.singleBtn]}>
                         {secondaryLabel && (
+                            <View style={styles.btnWrap}>
+                                <Button
+                                    label={secondaryLabel}
+                                    onPress={onSecondary || onClose}
+                                    variant={secondaryVariant}
+                                    size="md"
+                                    fullWidth
+                                />
+                            </View>
+                        )}
+                        <View style={secondaryLabel ? styles.btnWrap : styles.singleBtnWrap}>
                             <Button
-                                label={secondaryLabel}
-                                onPress={onSecondary || onClose}
-                                variant={secondaryVariant}
+                                label={primaryLabel}
+                                onPress={onPrimary || onClose}
+                                variant={resolvedPrimaryVariant}
                                 size="md"
                                 fullWidth
-                                style={styles.btnFlex}
                             />
-                        )}
-                        <Button
-                            label={primaryLabel}
-                            onPress={onPrimary || onClose}
-                            variant={resolvedPrimaryVariant}
-                            size="md"
-                            fullWidth
-                            style={styles.btnFlex}
-                        />
+                        </View>
                     </View>
                 </Animated.View>
             </View>
@@ -216,61 +230,61 @@ const styles = StyleSheet.create({
         flex: 1,
         justifyContent: "center",
         alignItems: "center",
-        paddingHorizontal: 28,
+        paddingHorizontal: 16, // Reduced from 24 to give more space
     },
     card: {
         width: "100%",
-        maxWidth: 360,
-        borderRadius: 24,
-        borderWidth: 1.5,
-        paddingTop: 32,
-        paddingBottom: 24,
-        paddingHorizontal: 24,
+        maxWidth: 360,          // Increased from 340 to accommodate buttons
+        borderRadius: 28,
+        borderWidth: 1,
+        paddingTop: 28,
+        paddingBottom: 24,      // Increased bottom padding
+        paddingHorizontal: 20,
         alignItems: "center",
     },
     closeBtn: {
         position: "absolute",
-        top: 16,
-        right: 16,
-        padding: 4,
+        top: 12,
+        right: 12,
+        padding: 6,
+        zIndex: 1,
     },
     iconBadge: {
-        width: 76,
-        height: 76,
-        borderRadius: 38,
+        width: 80,
+        height: 80,
+        borderRadius: 40,
         alignItems: "center",
         justifyContent: "center",
-        marginBottom: 18,
+        marginBottom: 16,
     },
     title: {
-        fontSize: 18,
+        fontSize: 20,
         fontWeight: "700",
         textAlign: "center",
-        letterSpacing: 0.15,
-        marginBottom: 10,
+        letterSpacing: 0.2,
+        marginBottom: 8,
     },
     message: {
         fontSize: 14,
         lineHeight: 22,
         textAlign: "center",
-        letterSpacing: 0.05,
-        marginBottom: 6,
-    },
-    divider: {
-        width: "100%",
-        height: 1,
-        marginVertical: 20,
+        letterSpacing: 0.1,
+        marginBottom: 24,
+        paddingHorizontal: 4,
     },
     buttonRow: {
         flexDirection: "row",
-        gap: 10,
+        gap: 12,
         width: "100%",
     },
     singleBtn: {
         justifyContent: "center",
     },
-    btnFlex: {
+    btnWrap: {
         flex: 1,
+    },
+    singleBtnWrap: {
+        width: "100%",
     },
 });
 

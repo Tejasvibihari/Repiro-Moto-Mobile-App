@@ -1,4 +1,8 @@
 // components/common/TabScreenWrapper.js
+//
+// USE ONLY on the 4 bottom-tab screens: Home, Orders, Wallet, Profile
+// For every other screen use ScreenWrapper instead.
+
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { useSelector } from 'react-redux';
@@ -6,11 +10,7 @@ import { useNavigation, DrawerActions } from '@react-navigation/native';
 import TopBar from './TopBar';
 import { getImageUrl } from '../../utils/imageUtils';
 
-// DynamicStatusBar lives in AppEntry — not here.
-
 const TabScreenWrapper = ({ children, showMenuIcon = true }) => {
-    // useNavigation() reaches the nearest navigator — which is the Drawer.
-    // DrawerActions.openDrawer() / toggleDrawer() works regardless of nesting depth.
     const navigation = useNavigation();
     const user = useSelector((state) => state.auth.user);
 

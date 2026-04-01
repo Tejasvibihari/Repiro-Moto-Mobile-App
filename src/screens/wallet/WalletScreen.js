@@ -6,7 +6,7 @@ export default function WalletScreen({ navigation }) {
     return (
         <TabScreenWrapper navigation={navigation}>
             <View style={styles.content}>
-                <Text>Wallet Screen</Text>
+                <Text>Main Wallet Screen</Text>
             </View>
         </TabScreenWrapper>
     );

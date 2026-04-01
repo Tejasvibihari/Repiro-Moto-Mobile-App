@@ -7,6 +7,8 @@ import { useSelector } from "react-redux";
 import LoginScreen from "../screens/auth/LoginScreen";
 import RegisterScreen from "../screens/auth/RegisterScreen";
 import DrawerNavigator from "./DrawerNavigator";   // ← replaces BottomTabNavigator at root
+import AddBikeScreen from "../screens/bikes/AddBikeScreen";
+import EditBikeScreen from "../screens/bikes/EditBikeScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -28,6 +30,8 @@ function AppStack() {
              * so tabs + drawer both work together.
              */}
             <Stack.Screen name="Main" component={DrawerNavigator} />
+            <Stack.Screen name="AddBike" component={AddBikeScreen} />
+            <Stack.Screen name="EditBike" component={EditBikeScreen} />
         </Stack.Navigator>
     );
 }
