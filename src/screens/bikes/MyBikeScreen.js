@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useSelector } from 'react-redux';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { LightTheme, DarkTheme } from '../../styles/Theme';
 import ScreenWrapper from '../../components/common/ScreenWrapper';
 import BikeCard from '../../components/bikes/BikeCard';
@@ -31,7 +32,14 @@ export default function MyBikeScreen({ navigation }) {
     const [refreshing, setRefreshing] = useState(false);
 
     const s = makeStyles(theme, isDark);
-
+    useFocusEffect(
+        useCallback(() => {
+            // Avoid refetching if there’s already an ongoing fetch
+            if (!loading && !refreshing) {
+                refetch();
+            }
+        }, [refetch, loading, refreshing])
+    );
     // Navigation handlers
     const handleBikePress = (bike) => {
         navigation?.navigate?.('BikeDetail', { bikeId: bike._id });
