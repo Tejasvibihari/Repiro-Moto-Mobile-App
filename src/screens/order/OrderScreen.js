@@ -199,10 +199,13 @@ export default function OrderScreen({ navigation }) {
 
     // ── Data ──────────────────────────────────────────────────────────────────
     const { orders, loading, refetch } = useOrder();
-    // ── Filter ────────────────────────────────────────────────────────────────
+    // ── Filter + sort newest first ─────────────────────────────────────────────
+    const sorted = [...orders].sort((a, b) =>
+        new Date(b.createdAt ?? 0) - new Date(a.createdAt ?? 0)
+    );
     const filtered = activeFilter === 'all'
-        ? orders
-        : orders.filter(o =>
+        ? sorted
+        : sorted.filter(o =>
             (o.status ?? '').toLowerCase().replace(' ', '_') === activeFilter
         );
 
@@ -215,7 +218,7 @@ export default function OrderScreen({ navigation }) {
 
     // ── Navigation handlers ───────────────────────────────────────────────────
     const handleCardPress = (order) => {
-        navigation?.navigate?.('OrderDetail', { orderId: order._id });
+        navigation?.navigate?.('OrderDetail', { orderId: order._id, order });
     };
 
     const handleCta = (order) => {
@@ -223,7 +226,7 @@ export default function OrderScreen({ navigation }) {
         if (status === 'in_progress') {
             navigation?.navigate?.('TrackService', { orderId: order._id });
         } else {
-            navigation?.navigate?.('OrderDetail', { orderId: order._id });
+            navigation?.navigate?.('OrderDetail', { orderId: order._id, order });
         }
     };
 

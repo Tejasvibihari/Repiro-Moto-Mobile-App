@@ -20,15 +20,6 @@ import { LightTheme, DarkTheme } from '../../styles/Theme';
 
 // ─── Status config ────────────────────────────────────────────────────────────
 const STATUS_CONFIG = {
-    in_progress: {
-        label: 'IN PROGRESS',
-        dotColor: '#5B8CFF',
-        badgeBg: 'rgba(91,140,255,0.12)',
-        badgeBorder: 'rgba(91,140,255,0.25)',
-        textColor: '#5B8CFF',
-        ctaLabel: 'TRACK SERVICE',
-        ctaVariant: 'primary',        // gold fill
-    },
     pending: {
         label: 'PENDING',
         dotColor: '#E2A731',
@@ -36,7 +27,34 @@ const STATUS_CONFIG = {
         badgeBorder: 'rgba(226,167,49,0.25)',
         textColor: '#E2A731',
         ctaLabel: 'VIEW DETAILS',
-        ctaVariant: 'ghost',          // subtle dark fill
+        ctaVariant: 'ghost',
+    },
+    mechanic_assigned: {
+        label: 'MECHANIC ASSIGNED',
+        dotColor: '#7B68EE',
+        badgeBg: 'rgba(123,104,238,0.12)',
+        badgeBorder: 'rgba(123,104,238,0.25)',
+        textColor: '#7B68EE',
+        ctaLabel: 'VIEW DETAILS',
+        ctaVariant: 'ghost',
+    },
+    in_progress: {
+        label: 'IN PROGRESS',
+        dotColor: '#5B8CFF',
+        badgeBg: 'rgba(91,140,255,0.12)',
+        badgeBorder: 'rgba(91,140,255,0.25)',
+        textColor: '#5B8CFF',
+        ctaLabel: 'TRACK SERVICE',
+        ctaVariant: 'primary',
+    },
+    invoice_generated: {
+        label: 'INVOICE GENERATED',
+        dotColor: '#2ECC9A',
+        badgeBg: 'rgba(46,204,154,0.12)',
+        badgeBorder: 'rgba(46,204,154,0.25)',
+        textColor: '#2ECC9A',
+        ctaLabel: 'VIEW INVOICE',
+        ctaVariant: 'primary',
     },
     completed: {
         label: 'COMPLETED',
@@ -58,14 +76,21 @@ const STATUS_CONFIG = {
     },
 };
 
-// ─── Format date helper ───────────────────────────────────────────────────────
+// ─── Format date helper (Hermes-safe, no Intl) ───────────────────────────────
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function formatDateTime(dateStr) {
     if (!dateStr) return '';
     try {
         const d = new Date(dateStr);
-        const date = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-        const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-        return `${date} · ${time}`;
+        if (isNaN(d.getTime())) return dateStr;
+        const mon = MONTHS[d.getMonth()];
+        const day = d.getDate();
+        const year = d.getFullYear();
+        let hrs = d.getHours();
+        const mins = String(d.getMinutes()).padStart(2, '0');
+        const ampm = hrs >= 12 ? 'PM' : 'AM';
+        hrs = hrs % 12 || 12;
+        return `${mon} ${day}, ${year} · ${hrs}:${mins} ${ampm}`;
     } catch {
         return dateStr;
     }
@@ -154,13 +179,15 @@ export default function OrderCard({ order, onPress, onCta, delay = 0 }) {
     const C = theme.colors;
     const isDark = mode === 'dark';
 
-    const status = (order?.status ?? 'pending').toLowerCase().replace(' ', '_');
+    const status = (order?.status ?? 'Pending').toLowerCase().replace(/ /g, '_');
     const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.pending;
 
     const displayId = order?.orderId ?? order?._id?.slice(-6)?.toUpperCase() ?? '------';
-    const bikeName = order?.selectedBrand + ' ' + order?.selectedModel ?? 'Unknown Bike';
-    const serviceType = order?.services.join(', ') ?? 'Service';
-    const dateStr = formatDateTime(order?.scheduledAt ?? order?.createdAt);
+    const bikeName = `${order?.selectedBrand ?? ''} ${order?.selectedModel ?? ''}`.trim() || 'Unknown Bike';
+    const serviceType = Array.isArray(order?.services) && order.services.length > 0
+        ? order.services.join(', ')
+        : 'Service';
+    const dateStr = formatDateTime(order?.preferredDate ?? order?.createdAt);
 
     // ── Entrance animation ────────────────────────────────────────────────────
     const translateY = useRef(new Animated.Value(24)).current;
