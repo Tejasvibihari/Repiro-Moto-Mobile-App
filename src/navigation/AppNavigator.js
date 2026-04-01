@@ -9,6 +9,7 @@ import RegisterScreen from "../screens/auth/RegisterScreen";
 import DrawerNavigator from "./DrawerNavigator";   // ← replaces BottomTabNavigator at root
 import AddBikeScreen from "../screens/bikes/AddBikeScreen";
 import EditBikeScreen from "../screens/bikes/EditBikeScreen";
+import OrderDetailScreen from "../screens/order/OrderDetailScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -30,8 +31,12 @@ function AppStack() {
              * so tabs + drawer both work together.
              */}
             <Stack.Screen name="Main" component={DrawerNavigator} />
+            {/* Bike Route  */}
             <Stack.Screen name="AddBike" component={AddBikeScreen} />
             <Stack.Screen name="EditBike" component={EditBikeScreen} />
+
+            {/* Order Route  */}
+            <Stack.Screen name="OrderDetail" component={OrderDetailScreen} />
         </Stack.Navigator>
     );
 }

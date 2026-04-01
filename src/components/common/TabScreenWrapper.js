@@ -10,7 +10,7 @@ import { useNavigation, DrawerActions } from '@react-navigation/native';
 import TopBar from './TopBar';
 import { getImageUrl } from '../../utils/imageUtils';
 
-const TabScreenWrapper = ({ children, showMenuIcon = true }) => {
+const TabScreenWrapper = ({ children, showMenuIcon = true, greeting }) => {
     const navigation = useNavigation();
     const user = useSelector((state) => state.auth.user);
 
@@ -25,6 +25,7 @@ const TabScreenWrapper = ({ children, showMenuIcon = true }) => {
         <View style={styles.container}>
             <TopBar
                 userName={userName}
+                greeting={greeting}
                 avatarSource={getAvatarSource()}
                 onMenuPress={() => navigation.dispatch(DrawerActions.openDrawer())}
                 onAvatarPress={() => navigation.navigate('Profile')}

@@ -129,7 +129,7 @@ export default function BikeCard({ bike, theme, isDark, onPress, onEdit, onDelet
                 </View>
 
                 {/* View Specifications link */}
-                <TouchableOpacity
+                {/* <TouchableOpacity
                     style={[s.specBtn, { borderColor: theme.colors.border }]}
                     activeOpacity={0.7}
                     onPress={() => onPress?.(bike)}
@@ -142,7 +142,7 @@ export default function BikeCard({ bike, theme, isDark, onPress, onEdit, onDelet
                         size={16}
                         color={theme.colors.primary}
                     />
-                </TouchableOpacity>
+                </TouchableOpacity> */}
             </View>
         </Animated.View>
     );
