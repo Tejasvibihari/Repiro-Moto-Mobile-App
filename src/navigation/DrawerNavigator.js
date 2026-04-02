@@ -53,6 +53,7 @@ const GROUP_1 = [
     { name: 'Home', label: 'Home', icon: 'home-outline', iconActive: 'home', lib: 'ion' },
     { name: 'Orders', label: 'Orders', icon: 'construct-outline', iconActive: 'construct', lib: 'ion' },
     { name: 'Wallet', label: 'Wallet', icon: 'wallet-outline', iconActive: 'wallet', lib: 'ion' },
+    { name: 'QrCodeScreen', label: 'Referal QR', icon: 'qr-code-outline', iconActive: 'qr-code', lib: 'ion' },
     { name: 'MyBikes', label: 'My Bikes', icon: 'bicycle', iconActive: 'bicycle', lib: 'mci' },
 ];
 
@@ -208,10 +209,10 @@ function CustomDrawerContent(props) {
                     <Text style={[s.userName, { color: theme.colors.textPrimary }]} numberOfLines={1}>
                         {fullName}
                     </Text>
-                    <Text style={[s.memberTag, { color: theme.colors.primary }]}>{memberTag}</Text>
-                    <Text style={[s.tagline, { color: theme.colors.textMuted }]} numberOfLines={1}>
+                    {/* <Text style={[s.memberTag, { color: theme.colors.primary }]}>{memberTag}</Text> */}
+                    {/* <Text style={[s.tagline, { color: theme.colors.textMuted }]} numberOfLines={1}>
                         {tagline}
-                    </Text>
+                    </Text> */}
                 </View>
             </Animated.View>
 

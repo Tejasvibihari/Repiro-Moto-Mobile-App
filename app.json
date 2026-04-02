@@ -1,6 +1,7 @@
 {
   "expo": {
-    "name": "repairoMotoApp",
+    "name": "Repairo Moto",
+    "displayName": "Repairo Moto",
     "slug": "repairoMotoApp",
     "version": "1.0.0",
     "orientation": "portrait",

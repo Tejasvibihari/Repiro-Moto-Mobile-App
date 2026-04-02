@@ -1,5 +1,5 @@
 // components/orders/MechanicCard.js
-// "MASTER MECHANIC" card — shows assigned mechanic name, image, rating, message button
+// "MASTER MECHANIC" card — shows assigned mechanic name, image, rating, call button
 // Also exports VendorCard for the garage/vendor section
 
 import React from 'react';
@@ -100,18 +100,29 @@ const starStyles = StyleSheet.create({
 // ─── MechanicCard ─────────────────────────────────────────────────────────────
 /**
  * Props:
- *   mechanicName   string  — from order.assignedMechanic
- *   mechanicId     string  — from order.mechanicId
- *   mechanicImage  string  — from order.mechanicImage (future field)
- *   onMessage      fn      — optional message handler
+ *   mechanicId   object — from order.mechanicId (contains _id, firstName, lastName, phone, profileImage)
+ *   onCall       fn     — optional call handler
  */
-export function MechanicCard({ mechanicName, mechanicId, mechanicImage, onMessage }) {
+export function MechanicCard({ mechanicId, onCall }) {
     const mode = useSelector((s) => s.theme.mode);
     const theme = mode === 'dark' ? DarkTheme : LightTheme;
     const C = theme.colors;
     const isDark = mode === 'dark';
 
-    if (!mechanicName) return null;
+    if (!mechanicId) return null;
+
+    const fullName = `${mechanicId.firstName ?? ''} ${mechanicId.lastName ?? ''}`.trim();
+    const phone = mechanicId.phone;
+
+    const handleCall = () => {
+        if (onCall) {
+            onCall();
+            return;
+        }
+        if (phone) {
+            Linking.openURL(`tel:${phone}`);
+        }
+    };
 
     return (
         <View style={[mech.card, {
@@ -123,26 +134,38 @@ export function MechanicCard({ mechanicName, mechanicId, mechanicImage, onMessag
 
             {/* Mechanic info row */}
             <View style={mech.infoRow}>
-                <MechanicAvatar name={mechanicName} image={mechanicId?.profileImage} C={C} isDark={isDark} />
+                <MechanicAvatar
+                    name={fullName}
+                    image={mechanicId.profileImage}
+                    C={C}
+                    isDark={isDark}
+                />
                 <View style={mech.textBlock}>
-                    <Text style={[mech.name, { color: C.textPrimary }]}>{mechanicName}</Text>
+                    <Text style={[mech.name, { color: C.textPrimary }]}>{fullName}</Text>
                     <StarRating rating={4.8} C={C} />
-                    <Text style={[mech.role, { color: C.textMuted }]}>Lead Mechanic</Text>
+                    {!!phone && (
+                        <View style={mech.phoneRow}>
+                            <Ionicons name="call-outline" size={12} color={C.textMuted} />
+                            <Text style={[mech.phone, { color: C.textMuted }]}>{phone}</Text>
+                        </View>
+                    )}
                 </View>
             </View>
 
-            {/* Message button */}
-            <TouchableOpacity
-                style={[mech.msgBtn, {
-                    backgroundColor: isDark ? '#2A2318' : '#F5F0E8',
-                    borderColor: C.border,
-                }]}
-                onPress={onMessage}
-                activeOpacity={0.75}
-            >
-                <Ionicons name="chatbubble-outline" size={15} color={C.primary} />
-                <Text style={[mech.msgLabel, { color: C.textSecondary }]}>MESSAGE MECHANIC</Text>
-            </TouchableOpacity>
+            {/* Call button */}
+            {!!phone && (
+                <TouchableOpacity
+                    style={[mech.callBtn, {
+                        backgroundColor: isDark ? '#2A2318' : '#F5F0E8',
+                        borderColor: C.border,
+                    }]}
+                    onPress={handleCall}
+                    activeOpacity={0.75}
+                >
+                    <Ionicons name="call-outline" size={15} color={C.primary} />
+                    <Text style={[mech.callLabel, { color: C.textSecondary }]}>CALL MECHANIC</Text>
+                </TouchableOpacity>
+            )}
         </View>
     );
 }
@@ -172,8 +195,9 @@ const mech = StyleSheet.create({
     },
     textBlock: { flex: 1, gap: 4 },
     name: { fontSize: 17, fontWeight: '800', letterSpacing: 0.1 },
-    role: { fontSize: 11, letterSpacing: 0.2 },
-    msgBtn: {
+    phoneRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 },
+    phone: { fontSize: 12, letterSpacing: 0.1 },
+    callBtn: {
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
@@ -182,7 +206,7 @@ const mech = StyleSheet.create({
         borderRadius: 12,
         borderWidth: 1,
     },
-    msgLabel: {
+    callLabel: {
         fontSize: 11,
         fontWeight: '700',
         letterSpacing: 1.5,

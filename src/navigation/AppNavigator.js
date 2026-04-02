@@ -10,6 +10,7 @@ import DrawerNavigator from "./DrawerNavigator";   // ← replaces BottomTabNavi
 import AddBikeScreen from "../screens/bikes/AddBikeScreen";
 import EditBikeScreen from "../screens/bikes/EditBikeScreen";
 import OrderDetailScreen from "../screens/order/OrderDetailScreen";
+import QrCodeScreen from "../screens/qrcode/QrCodeScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -37,6 +38,9 @@ function AppStack() {
 
             {/* Order Route  */}
             <Stack.Screen name="OrderDetail" component={OrderDetailScreen} />
+
+
+            <Stack.Screen name="QrCodeScreen" component={QrCodeScreen} />
         </Stack.Navigator>
     );
 }
