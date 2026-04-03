@@ -17,6 +17,7 @@ import BikeCard from '../../components/bikes/BikeCard';
 import PopUp from '../../components/common/PopUp';
 import Loader from '../../components/common/Loader';
 import useBikes from '../../hooks/useBikes';
+import TabScreenWrapper from '../../components/common/TabScreenWrapper';
 
 export default function MyBikeScreen({ navigation }) {
     const mode = useSelector((state) => state.theme.mode);
@@ -125,7 +126,7 @@ export default function MyBikeScreen({ navigation }) {
     }
 
     return (
-        <ScreenWrapper title="My Bikes" noPadding>
+        <TabScreenWrapper navigation={navigation} greeting="My Bikes">
             <ScrollView
                 style={s.root}
                 contentContainerStyle={s.scroll}
@@ -235,7 +236,7 @@ export default function MyBikeScreen({ navigation }) {
                 dismissOnBackdrop={true}
                 showCloseIcon={true}
             />
-        </ScreenWrapper>
+        </TabScreenWrapper>
     );
 }
 

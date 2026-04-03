@@ -112,6 +112,12 @@ export default function ReferralStatsRow({ stats, canWithdraw, C, isDark }) {
 }
 
 const row = StyleSheet.create({
-    wrap: { flexDirection: 'row', gap: 8 },
-    row: { flexDirection: 'row', gap: 8, flex: 1 },
+    wrap: {
+        flexDirection: 'column', // ✅ stacks the two rows vertically
+        gap: 8,
+    },
+    row: {
+        flexDirection: 'row',    // ✅ places two tiles side by side in each row
+        gap: 8,
+    },
 });

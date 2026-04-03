@@ -252,8 +252,8 @@ export default function ReferEarnScreen({ navigation }) {
                     <Text style={[s.heroTitle, { color: C.textPrimary }]}>Refer Friends,{'\n'}Earn Rewards 🎁</Text>
                     <Text style={[s.heroSub, { color: C.textSecondary }]}>
                         {canWithdraw
-                            ? 'Earn ₹150 cash per referral. Withdraw directly to your UPI account.'
-                            : 'Earn ₹150 credit per referral — applied automatically on your next service.'}
+                            ? 'Earn upto ₹249 cash per referral. Withdraw directly to your UPI account.'
+                            : 'Earn upto ₹50 credit per referral — applied automatically on your next service.'}
                     </Text>
                 </View>
 

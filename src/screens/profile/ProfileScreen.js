@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import {
     View,
     Text,
@@ -20,6 +20,7 @@ import StatCard from '../../components/profile/StatCard';
 import MenuItem from '../../components/profile/MenuItem';
 import Loader from '../../components/common/Loader';
 import { useFetchUserProfile } from '../../hooks/useFetchUserProfile'; // import custom hook
+import PopUp from '../../components/common/PopUp';
 
 // ─── Menu items config ────────────────────────────────────────────────────────
 const MENU_ITEMS = [
@@ -37,13 +38,13 @@ const MENU_ITEMS = [
         iconLib: 'material',
         route: 'Orders',
     },
-    {
-        id: 'address',
-        label: 'Address',
-        icon: 'map-marker',
-        iconLib: 'material',
-        route: 'Address',
-    },
+    // {
+    //     id: 'address',
+    //     label: 'Address',
+    //     icon: 'map-marker',
+    //     iconLib: 'material',
+    //     route: 'Address',
+    // },
     {
         id: 'settings',
         label: 'Settings',
@@ -66,6 +67,7 @@ export default function ProfileScreen({ navigation }) {
     console.log('User data in ProfileScreen:', { user, totalBikes, totalOrders });
     // Use the custom hook to fetch profile data
     const { loading, error } = useFetchUserProfile(userId);
+    const [showLogoutPopup, setShowLogoutPopup] = useState(false);
 
     // Header animations
     const avatarScale = useRef(new Animated.Value(0.6)).current;
@@ -88,18 +90,7 @@ export default function ProfileScreen({ navigation }) {
     }, [loading, user]);
 
     const handleLogout = () => {
-        Alert.alert(
-            'Logout',
-            'Are you sure you want to logout?',
-            [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                    text: 'Logout',
-                    style: 'destructive',
-                    onPress: () => dispatch(logout()),
-                },
-            ]
-        );
+        setShowLogoutPopup(true);
     };
 
     const handleNavigate = (route) => {
@@ -107,7 +98,7 @@ export default function ProfileScreen({ navigation }) {
     };
 
     const handleEditProfile = () => {
-        navigation?.navigate?.('EditProfile');
+        navigation?.navigate?.('Settings');
     };
 
     const avatarSource = user?.profileImage
@@ -134,7 +125,7 @@ export default function ProfileScreen({ navigation }) {
     // Optionally show an error screen if error occurred
     if (error) {
         return (
-            <TabScreenWrapper navigation={navigation} showMenuIcon={true}>
+            <TabScreenWrapper navigation={navigation} showMenuIcon={true} >
                 <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
                     <Text style={{ color: theme.colors.error, marginBottom: 12 }}>
                         Failed to load profile. Please try again.
@@ -151,7 +142,7 @@ export default function ProfileScreen({ navigation }) {
     }
 
     return (
-        <TabScreenWrapper navigation={navigation} showMenuIcon={true}>
+        <TabScreenWrapper navigation={navigation} showMenuIcon={true} greeting={"Profile"}>
             <ScrollView
                 style={s.root}
                 contentContainerStyle={s.scroll}
@@ -270,6 +261,23 @@ export default function ProfileScreen({ navigation }) {
                     </Text>
                 </View>
             </ScrollView>
+
+            <PopUp
+                visible={showLogoutPopup}
+                type="confirm"
+                title="Log Out"
+                message="Are you sure you want to log out of your account?"
+                primaryLabel="Log Out"
+                secondaryLabel="Cancel"
+                primaryVariant="danger"
+                onPrimary={() => {
+                    setShowLogoutPopup(false);
+                    setTimeout(() => dispatch(logout()), 200);
+                }}
+                onSecondary={() => setShowLogoutPopup(false)}
+                onClose={() => setShowLogoutPopup(false)}
+                customIcon="log-out-outline"
+            />
         </TabScreenWrapper>
     );
 }

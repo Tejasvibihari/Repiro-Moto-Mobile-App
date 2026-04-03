@@ -82,7 +82,9 @@ const TopBar = ({
     onMenuPress,
     onNotificationPress,
     onAvatarPress,
+    onBookingPress,
     showMenuIcon = true,
+    showBookingIcon = true,
     style,
 }) => {
     const insets = useSafeAreaInsets();
@@ -158,6 +160,20 @@ const TopBar = ({
 
                 {/* Right: Bell + Avatar */}
                 <View style={styles.right}>
+                    {showBookingIcon && (
+                        <TouchableOpacity
+                            onPress={onBookingPress}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            activeOpacity={0.7}
+                        >
+                            <Ionicons
+                                name="calendar-outline"
+                                size={22}
+                                color={theme.colors.textSecondary}
+                            />
+                        </TouchableOpacity>
+                    )}
+
                     <TouchableOpacity
                         onPress={onNotificationPress}
                         style={styles.bellWrap}

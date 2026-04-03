@@ -14,7 +14,7 @@
 // Dependencies:
 //   npx expo install @react-navigation/drawer react-native-gesture-handler react-native-reanimated
 
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import {
     View,
     Text,
@@ -35,6 +35,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LightTheme, DarkTheme } from '../styles/Theme';
 import { logout } from '../store/slices/authSlice';
 import { getImageUrl } from '../utils/imageUtils';
+import PopUp from '../components/common/PopUp';
 
 // Screens
 import BottomTabNavigator from '../components/common/BottomTabNavigator';
@@ -45,6 +46,7 @@ import ReferEarnScreen from '../screens/refer/ReferEarnScreen';
 import SupportScreen from '../screens/support/SupportScreen';
 import SettingsScreen from '../screens/settings/SettingsScreen';
 import MyBikeScreen from '../screens/bikes/MyBikeScreen';
+import TermsConditionsScreen from '../screens/legal/TermsConditionsScreen';
 
 const Drawer = createDrawerNavigator();
 
@@ -52,7 +54,7 @@ const Drawer = createDrawerNavigator();
 const GROUP_1 = [
     { name: 'Home', label: 'Home', icon: 'home-outline', iconActive: 'home', lib: 'ion' },
     { name: 'Orders', label: 'Orders', icon: 'construct-outline', iconActive: 'construct', lib: 'ion' },
-    { name: 'Wallet', label: 'Wallet', icon: 'wallet-outline', iconActive: 'wallet', lib: 'ion' },
+    // { name: 'Wallet', label: 'Wallet', icon: 'wallet-outline', iconActive: 'wallet', lib: 'ion' },
     { name: 'QrCodeScreen', label: 'Referal QR', icon: 'qr-code-outline', iconActive: 'qr-code', lib: 'ion' },
     { name: 'MyBikes', label: 'My Bikes', icon: 'bicycle', iconActive: 'bicycle', lib: 'mci' },
 ];
@@ -60,6 +62,7 @@ const GROUP_1 = [
 const GROUP_2 = [
     { name: 'ReferEarn', label: 'Refer & Earn', icon: 'gift-outline', iconActive: 'gift', lib: 'ion' },
     { name: 'Support', label: 'Support', icon: 'help-circle-outline', iconActive: 'help-circle', lib: 'ion' },
+    { name: 'TermsConditions', label: 'Terms & Conditions', icon: 'document-text-outline', iconActive: 'document-text', lib: 'ion' },
     { name: 'Settings', label: 'Settings', icon: 'settings-outline', iconActive: 'settings', lib: 'ion' },
 ];
 
@@ -153,11 +156,10 @@ function CustomDrawerContent(props) {
     const memberTag = user?.memberTag ?? 'Gold Member';
     const tagline = user?.tagline ?? 'Precision Atelier Enthusiast';
 
+    const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+
     const handleLogout = () => {
-        Alert.alert('Logout', 'Are you sure you want to logout?', [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Logout', style: 'destructive', onPress: () => dispatch(logout()) },
-        ]);
+        setShowLogoutConfirm(true);
     };
 
     const navigate = (name) => {
@@ -265,6 +267,23 @@ function CustomDrawerContent(props) {
                 <Ionicons name="log-out-outline" size={20} color="#FF6B6B" />
                 <Text style={s.logoutLabel}>Logout</Text>
             </TouchableOpacity>
+
+            <PopUp
+                visible={showLogoutConfirm}
+                type="confirm"
+                title="Log Out"
+                message="Are you sure you want to log out of your account?"
+                primaryLabel="Log Out"
+                secondaryLabel="Cancel"
+                primaryVariant="danger"
+                onPrimary={() => {
+                    setShowLogoutConfirm(false);
+                    setTimeout(() => dispatch(logout()), 200);
+                }}
+                onSecondary={() => setShowLogoutConfirm(false)}
+                onClose={() => setShowLogoutConfirm(false)}
+                customIcon="log-out-outline"
+            />
         </View>
     );
 }
@@ -426,6 +445,7 @@ export default function DrawerNavigator() {
             <Drawer.Screen name="ReferEarn" component={ReferEarnScreen} />
             <Drawer.Screen name="Support" component={SupportScreen} />
             <Drawer.Screen name="Settings" component={SettingsScreen} />
+            <Drawer.Screen name="TermsConditions" component={TermsConditionsScreen} />
         </Drawer.Navigator>
     );
 }

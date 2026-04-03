@@ -29,7 +29,9 @@ const TabScreenWrapper = ({ children, showMenuIcon = true, greeting }) => {
                 avatarSource={getAvatarSource()}
                 onMenuPress={() => navigation.dispatch(DrawerActions.openDrawer())}
                 onAvatarPress={() => navigation.navigate('Profile')}
+                onBookingPress={() => navigation.navigate('Home')}
                 showMenuIcon={showMenuIcon}
+                showBookingIcon={true}
             />
             <View style={styles.content}>
                 {children}

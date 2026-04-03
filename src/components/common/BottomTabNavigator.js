@@ -18,6 +18,7 @@ import DashboardScreen from "../../screens/dashboard/DashboardScreen";
 import OrdersScreen from "../../screens/order/OrderScreen";
 import WalletScreen from "../../screens/wallet/WalletScreen";
 import ProfileScreen from "../../screens/profile/ProfileScreen";
+import MyBikeScreen from "../../screens/bikes/MyBikeScreen";
 
 const Tab = createBottomTabNavigator();
 
@@ -40,11 +41,11 @@ const TABS = [
         iconActive: "construct",
     },
     {
-        name: "Wallet",
-        label: "WALLET",
-        screen: WalletScreen,
-        icon: "wallet-outline",
-        iconActive: "wallet",
+        name: "Bikes",
+        label: "BIKES",
+        screen: MyBikeScreen,
+        icon: "bicycle",
+        iconActive: "bicycle",
     },
     {
         name: "Profile",
@@ -149,7 +150,7 @@ const CustomTabBar = ({ state, descriptors, navigation }) => {
         <View
             style={[
                 barStyles.wrapper,
-                { paddingBottom: insets.bottom  > 0 ? insets.bottom + 12 : 12 },
+                { paddingBottom: insets.bottom > 0 ? insets.bottom + 12 : 12 },
             ]}
         >
             <View
