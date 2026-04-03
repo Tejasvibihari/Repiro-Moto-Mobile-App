@@ -14,7 +14,10 @@
       "backgroundColor": "#FFF8EC"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "config": {
+        "googleMapsApiKey": "AIzaSyC-RRm-8NLc8XCOz89NbdpTdQvIr1if76c"
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -27,7 +30,17 @@
         "backgroundColor": "transparent",
         "translucent": true
       },
-      "package": "com.anonymous.repairoMotoApp"
+      "package": "com.anonymous.repairoMotoApp",
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyC-RRm-8NLc8XCOz89NbdpTdQvIr1if76c"
+        }
+      },
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -46,6 +59,11 @@
           "locationWhenInUsePermission": "Repairo Moto needs your location to check if your area is serviceable."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "b7b6901c-38f8-4d45-9a33-3411236461ec"
+      }
+    }
   }
 }

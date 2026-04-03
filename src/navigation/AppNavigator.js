@@ -11,6 +11,8 @@ import AddBikeScreen from "../screens/bikes/AddBikeScreen";
 import EditBikeScreen from "../screens/bikes/EditBikeScreen";
 import OrderDetailScreen from "../screens/order/OrderDetailScreen";
 import QrCodeScreen from "../screens/qrcode/QrCodeScreen";
+import NewOrderScreen from "../screens/order/NewOrderScreen";
+import OrderScreen from "../screens/order/OrderScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -26,14 +28,16 @@ function AuthStack() {
 function AppStack() {
     return (
         <Stack.Navigator screenOptions={{ headerShown: false }}>
-            
+
             <Stack.Screen name="Main" component={DrawerNavigator} />
             {/* Bike Route  */}
             <Stack.Screen name="AddBike" component={AddBikeScreen} />
             <Stack.Screen name="EditBike" component={EditBikeScreen} />
 
             {/* Order Route  */}
+            <Stack.Screen name="NewOrder" component={NewOrderScreen} />
             <Stack.Screen name="OrderDetail" component={OrderDetailScreen} />
+            <Stack.Screen name="Orders" component={OrderScreen} />
 
 
             <Stack.Screen name="QrCodeScreen" component={QrCodeScreen} />
