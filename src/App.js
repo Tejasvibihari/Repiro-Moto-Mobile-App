@@ -7,11 +7,12 @@ import { syncSystemTheme } from "./store/slices/themeSlice";
 import SplashScreen from "./screens/splash/SplashScreen";
 import AppNavigator from "./navigation/AppNavigator";
 import DynamicStatusBar from "./components/common/DynamicStatusBar";
+import LocationGate from "./components/common/LocationGate";
 
 export default function AppEntry() {
     const dispatch = useDispatch();
     const [splashVisible, setSplashVisible] = useState(true);
-
+    const isLoggedIn = useSelector((state) => state.auth.isLoggedIn);
     const mode = useSelector((state) => state.theme.mode);
     const theme = mode === "dark" ? DarkTheme : LightTheme;
 
@@ -26,13 +27,15 @@ export default function AppEntry() {
 
     return (
         <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-            {/* ✅ Single mount point for StatusBar — applies to ALL screens */}
             <DynamicStatusBar />
-
             {splashVisible ? (
                 <SplashScreen onFinish={() => setSplashVisible(false)} />
+            ) : isLoggedIn ? (           // ← check login here
+                <LocationGate>
+                    <AppNavigator />
+                </LocationGate>
             ) : (
-                <AppNavigator />
+                <AppNavigator />         // ← auth screens skip the gate
             )}
         </View>
     );

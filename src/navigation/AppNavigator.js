@@ -26,11 +26,7 @@ function AuthStack() {
 function AppStack() {
     return (
         <Stack.Navigator screenOptions={{ headerShown: false }}>
-            {/*
-             * DrawerNavigator is now the root of the logged-in flow.
-             * It contains BottomTabNavigator as its "Home" screen,
-             * so tabs + drawer both work together.
-             */}
+            
             <Stack.Screen name="Main" component={DrawerNavigator} />
             {/* Bike Route  */}
             <Stack.Screen name="AddBike" component={AddBikeScreen} />

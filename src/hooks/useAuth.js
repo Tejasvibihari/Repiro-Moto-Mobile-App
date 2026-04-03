@@ -1,6 +1,7 @@
 // src/hooks/useAuth.js
 import { useDispatch, useSelector } from 'react-redux';
 import { login, logout } from '../store/slices/authSlice';
+import { resetLocation } from '../store/slices/locationSlice';
 
 const useAuth = () => {
     const dispatch = useDispatch();
@@ -12,6 +13,7 @@ const useAuth = () => {
 
     const signOut = () => {
         dispatch(logout());
+        dispatch(resetLocation());
     };
 
     return {

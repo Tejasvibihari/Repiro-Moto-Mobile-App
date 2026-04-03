@@ -39,6 +39,12 @@
           "photosPermission": "Allow Repairo Moto to access your photos to change your profile picture.",
           "cameraPermission": "Allow Repairo Moto to access your camera to take a new profile picture."
         }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Repairo Moto needs your location to check if your area is serviceable."
+        }
       ]
     ]
   }

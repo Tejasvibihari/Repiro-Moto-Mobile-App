@@ -5,6 +5,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import authReducer from "./slices/authSlice";
 import themeReducer from "./slices/themeSlice";
 import userReducer from "./slices/userSlice";
+import locationReducer from "./slices/locationSlice";
 
 const authPersistConfig = {
     key: "auth",
@@ -19,6 +20,7 @@ export const store = configureStore({
         auth: persistedAuthReducer,
         theme: themeReducer,
         user: userReducer,
+        location: locationReducer,
     },
     middleware: (getDefaultMiddleware) =>
         getDefaultMiddleware({
