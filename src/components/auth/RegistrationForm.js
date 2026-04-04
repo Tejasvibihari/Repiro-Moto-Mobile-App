@@ -1,3 +1,4 @@
+// src/components/auth/RegistrationForm.js
 import React, { useRef, useState } from 'react';
 import {
     View,
@@ -9,37 +10,42 @@ import {
     Animated,
     Platform,
     useColorScheme,
+    ScrollView,
 } from 'react-native';
 import { LightTheme, DarkTheme } from '../../styles/Theme';
 
-// ─── Optional deps ────────────────────────────────────────────────────────────
 let LinearGradient = null;
 try { LinearGradient = require('expo-linear-gradient').LinearGradient; } catch (_) { }
 
-// ─── Device metrics ───────────────────────────────────────────────────────────
 const { width: W } = require('react-native').Dimensions.get('window');
 const isSmall = W <= 375;
 
-// =============================================================================
-// RegisterForm Component
-// =============================================================================
 export default function RegisterForm({ onSubmit, onLogin, loading = false }) {
     const scheme = useColorScheme();
     const theme = scheme === 'dark' ? DarkTheme : LightTheme;
     const C = theme.colors;
     const isDark = scheme === 'dark';
 
-    // Form state
+    // Base fields
     const [firstName, setFirstName] = useState('');
     const [lastName, setLastName] = useState('');
     const [phone, setPhone] = useState('');
     const [email, setEmail] = useState('');
     const [referralCode, setReferralCode] = useState('');
-    const [accountType, setAccountType] = useState('personal'); // 'personal' or 'business'
+    const [accountType, setAccountType] = useState('personal');
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [showPass, setShowPass] = useState(false);
     const [showConfirmPass, setShowConfirmPass] = useState(false);
+
+    // Business fields
+    const [businessName, setBusinessName] = useState('');
+    const [address, setAddress] = useState('');
+    const [city, setCity] = useState('');
+    const [state, setState] = useState('');
+    const [pincode, setPincode] = useState('');
+    const [businessType, setBusinessType] = useState('');
+
     const [errors, setErrors] = useState({});
 
     // Refs
@@ -49,6 +55,12 @@ export default function RegisterForm({ onSubmit, onLogin, loading = false }) {
     const referralRef = useRef(null);
     const passRef = useRef(null);
     const confirmRef = useRef(null);
+    const businessNameRef = useRef(null);
+    const addressRef = useRef(null);
+    const cityRef = useRef(null);
+    const stateRef = useRef(null);
+    const pincodeRef = useRef(null);
+    const businessTypeRef = useRef(null);
 
     const ctaScale = useRef(new Animated.Value(1)).current;
 
@@ -66,13 +78,25 @@ export default function RegisterForm({ onSubmit, onLogin, loading = false }) {
         if (!password) newErrors.password = 'Password is required';
         else if (password.length < 6) newErrors.password = 'Password must be at least 6 characters';
         if (password !== confirmPassword) newErrors.confirmPassword = 'Passwords do not match';
+
+        // Business validations
+        if (accountType === 'business') {
+            if (!businessName.trim()) newErrors.businessName = 'Business name is required';
+            if (!address.trim()) newErrors.address = 'Address is required';
+            if (!city.trim()) newErrors.city = 'City is required';
+            if (!state.trim()) newErrors.state = 'State is required';
+            if (!pincode.trim()) newErrors.pincode = 'Pincode is required';
+            else if (!/^\d{6}$/.test(pincode)) newErrors.pincode = 'Invalid pincode (6 digits)';
+            if (!businessType.trim()) newErrors.businessType = 'Business type is required';
+        }
+
         setErrors(newErrors);
         return Object.keys(newErrors).length === 0;
     };
 
     const handleSubmit = () => {
         if (validate()) {
-            onSubmit?.({
+            const formData = {
                 firstName,
                 lastName,
                 phone,
@@ -80,7 +104,16 @@ export default function RegisterForm({ onSubmit, onLogin, loading = false }) {
                 referralCode,
                 accountType,
                 password,
-            });
+                ...(accountType === 'business' && {
+                    businessName,
+                    address,
+                    city,
+                    state,
+                    pincode,
+                    businessType,
+                }),
+            };
+            onSubmit(formData);
         }
     };
 
@@ -187,7 +220,7 @@ export default function RegisterForm({ onSubmit, onLogin, loading = false }) {
                 </View>
             </View>
 
-            {/* Account Type - Radio Buttons (Personal / Business) */}
+            {/* Account Type - Radio Buttons */}
             <View style={s.fieldGroup}>
                 <Text style={s.fieldLabel}>Account Type</Text>
                 <View style={s.radioGroup}>
@@ -205,6 +238,117 @@ export default function RegisterForm({ onSubmit, onLogin, loading = false }) {
                     />
                 </View>
             </View>
+
+            {/* Conditional Business Fields */}
+            {accountType === 'business' && (
+                <View style={s.businessSection}>
+                    <Text style={s.sectionTitle}>Business Details</Text>
+                    <View style={s.fieldGroup}>
+                        <Text style={s.fieldLabel}>Business Name</Text>
+                        <View style={s.inputContainer}>
+                            <TextInput
+                                ref={businessNameRef}
+                                style={s.input}
+                                value={businessName}
+                                onChangeText={setBusinessName}
+                                placeholder="Elite Auto Works"
+                                placeholderTextColor={C.textMuted}
+                                returnKeyType="next"
+                                onSubmitEditing={() => addressRef.current?.focus()}
+                            />
+                        </View>
+                        {errors.businessName && <Text style={s.errorText}>{errors.businessName}</Text>}
+                    </View>
+
+                    <View style={s.fieldGroup}>
+                        <Text style={s.fieldLabel}>Address</Text>
+                        <View style={s.inputContainer}>
+                            <TextInput
+                                ref={addressRef}
+                                style={s.input}
+                                value={address}
+                                onChangeText={setAddress}
+                                placeholder="Street, building, etc."
+                                placeholderTextColor={C.textMuted}
+                                returnKeyType="next"
+                                onSubmitEditing={() => cityRef.current?.focus()}
+                            />
+                        </View>
+                        {errors.address && <Text style={s.errorText}>{errors.address}</Text>}
+                    </View>
+
+                    <View style={s.row}>
+                        <View style={[s.halfField, { marginRight: 8 }]}>
+                            <Text style={s.fieldLabel}>City</Text>
+                            <View style={s.inputContainer}>
+                                <TextInput
+                                    ref={cityRef}
+                                    style={s.input}
+                                    value={city}
+                                    onChangeText={setCity}
+                                    placeholder="Mumbai"
+                                    placeholderTextColor={C.textMuted}
+                                    returnKeyType="next"
+                                    onSubmitEditing={() => stateRef.current?.focus()}
+                                />
+                            </View>
+                            {errors.city && <Text style={s.errorText}>{errors.city}</Text>}
+                        </View>
+                        <View style={s.halfField}>
+                            <Text style={s.fieldLabel}>State</Text>
+                            <View style={s.inputContainer}>
+                                <TextInput
+                                    ref={stateRef}
+                                    style={s.input}
+                                    value={state}
+                                    onChangeText={setState}
+                                    placeholder="Maharashtra"
+                                    placeholderTextColor={C.textMuted}
+                                    returnKeyType="next"
+                                    onSubmitEditing={() => pincodeRef.current?.focus()}
+                                />
+                            </View>
+                            {errors.state && <Text style={s.errorText}>{errors.state}</Text>}
+                        </View>
+                    </View>
+
+                    <View style={s.row}>
+                        <View style={[s.halfField, { marginRight: 8 }]}>
+                            <Text style={s.fieldLabel}>Pincode</Text>
+                            <View style={s.inputContainer}>
+                                <TextInput
+                                    ref={pincodeRef}
+                                    style={s.input}
+                                    value={pincode}
+                                    onChangeText={setPincode}
+                                    placeholder="400001"
+                                    placeholderTextColor={C.textMuted}
+                                    keyboardType="numeric"
+                                    returnKeyType="next"
+                                    onSubmitEditing={() => businessTypeRef.current?.focus()}
+                                />
+                            </View>
+                            {errors.pincode && <Text style={s.errorText}>{errors.pincode}</Text>}
+                        </View>
+                        <View style={s.halfField}>
+                            <Text style={s.fieldLabel}>Business Type</Text>
+                            <View style={s.inputContainer}>
+                                <TextInput
+                                    ref={businessTypeRef}
+                                    style={s.input}
+                                    value={businessType}
+                                    onChangeText={setBusinessType}
+                                    placeholder="Workshop, Spares, etc."
+                                    placeholderTextColor={C.textMuted}
+                                    returnKeyType="done"
+                                    onSubmitEditing={handleSubmit}
+                                />
+                            </View>
+                            {errors.businessType && <Text style={s.errorText}>{errors.businessType}</Text>}
+                        </View>
+                    </View>
+                </View>
+            )}
 
             {/* Password */}
             <View style={s.fieldGroup}>
@@ -282,22 +426,21 @@ export default function RegisterForm({ onSubmit, onLogin, loading = false }) {
     );
 }
 
-// ─── Styles with smaller fonts ───────────────────────────────────────────────
 function formStyles(C, isDark) {
     return StyleSheet.create({
         card: {
             backgroundColor: isDark ? 'rgba(28,22,16,0.90)' : 'rgba(255,255,255,0.94)',
             borderRadius: 28,
             padding: 24,
-            gap: 16, // reduced gap
+            gap: 16,
             borderWidth: 1,
             borderColor: C.border,
         },
         row: { flexDirection: 'row', justifyContent: 'space-between' },
         halfField: { flex: 1 },
-        fieldGroup: { gap: 4 }, // smaller gap
+        fieldGroup: { gap: 4 },
         fieldLabel: {
-            fontSize: 10, // was 12
+            fontSize: 10,
             fontWeight: '700',
             letterSpacing: 1.0,
             textTransform: 'uppercase',
@@ -308,20 +451,20 @@ function formStyles(C, isDark) {
             flexDirection: 'row',
             alignItems: 'center',
             backgroundColor: isDark ? '#1C1610' : '#FFF8EE',
-            borderRadius: 16, // slightly smaller
+            borderRadius: 16,
             paddingHorizontal: 14,
-            paddingVertical: Platform.OS === 'ios' ? 12 : 10, // reduced
+            paddingVertical: Platform.OS === 'ios' ? 12 : 10,
             borderWidth: 1,
             borderColor: 'transparent',
         },
         input: {
             flex: 1,
-            fontSize: 14, // was 16
+            fontSize: 14,
             color: C.textPrimary,
             paddingVertical: 0,
         },
-        eyeIcon: { fontSize: 16, color: C.textMuted, marginLeft: 8 }, // was 18
-        errorText: { fontSize: 11, color: '#ff4d4d', marginLeft: 12, marginTop: 2 }, // was 12
+        eyeIcon: { fontSize: 16, color: C.textMuted, marginLeft: 8 },
+        errorText: { fontSize: 11, color: '#ff4d4d', marginLeft: 12, marginTop: 2 },
         radioGroup: { flexDirection: 'row', gap: 20, marginTop: 4 },
         radioItem: { flexDirection: 'row', alignItems: 'center', gap: 8 },
         radioCircle: {
@@ -333,11 +476,11 @@ function formStyles(C, isDark) {
             backgroundColor: 'transparent',
         },
         radioSelected: { backgroundColor: C.primary },
-        radioLabel: { fontSize: 13, color: C.textPrimary }, // was 15
+        radioLabel: { fontSize: 13, color: C.textPrimary },
         ctaWrap: { marginTop: 8 },
         ctaButton: {
             borderRadius: 40,
-            paddingVertical: 14, // was 18
+            paddingVertical: 14,
             alignItems: 'center',
             justifyContent: 'center',
             shadowColor: C.primary,
@@ -348,15 +491,17 @@ function formStyles(C, isDark) {
         },
         ctaInner: { flexDirection: 'row', alignItems: 'center', gap: 8 },
         ctaText: {
-            fontSize: 14, // was 16
+            fontSize: 14,
             fontWeight: '800',
             letterSpacing: 1.4,
             textTransform: 'uppercase',
             color: '#1a1a1a',
         },
-        ctaIcon: { fontSize: 16, color: '#1a1a1a', fontWeight: 'bold' }, // was 18
+        ctaIcon: { fontSize: 16, color: '#1a1a1a', fontWeight: 'bold' },
         loginLink: { flexDirection: 'row', justifyContent: 'center', marginTop: 6 },
-        loginText: { fontSize: 12, color: C.textSecondary }, // was 14
-        loginButtonText: { fontSize: 12, fontWeight: '700', color: C.primary, textDecorationLine: 'underline' }, // was 14
+        loginText: { fontSize: 12, color: C.textSecondary },
+        loginButtonText: { fontSize: 12, fontWeight: '700', color: C.primary, textDecorationLine: 'underline' },
+        businessSection: { gap: 12, marginTop: 4 },
+        sectionTitle: { fontSize: 12, fontWeight: '600', color: C.primary, marginBottom: 4, letterSpacing: 0.5 },
     });
 }
