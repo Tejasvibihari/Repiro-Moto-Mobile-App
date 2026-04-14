@@ -17,6 +17,10 @@
       "supportsTablet": true,
       "config": {
         "googleMapsApiKey": "AIzaSyC-RRm-8NLc8XCOz89NbdpTdQvIr1if76c"
+      },
+      "bundleIdentifier": "com.roottechnology.repairoMotoApp",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -24,13 +28,14 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
+      "googleServicesFile": "./google-services.json",
       "edgeToEdgeEnabled": true,
       "statusBar": {
         "barStyle": "dark-content",
         "backgroundColor": "transparent",
         "translucent": true
       },
-      "package": "com.anonymous.repairoMotoApp",
+      "package": "com.roottechnology.repairoMotoApp",
       "config": {
         "googleMaps": {
           "apiKey": "AIzaSyC-RRm-8NLc8XCOz89NbdpTdQvIr1if76c"

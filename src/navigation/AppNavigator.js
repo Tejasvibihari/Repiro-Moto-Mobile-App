@@ -1,8 +1,9 @@
 // navigation/AppNavigator.js
 import React from "react";
-import { NavigationContainer } from "@react-navigation/native";
+import { NavigationContainer, useNavigationContainerRef } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { useSelector } from "react-redux";
+import { usePushNotifications } from "../hooks/usePushNotifications";
 
 import LoginScreen from "../screens/auth/LoginScreen";
 import RegisterScreen from "../screens/auth/RegisterScreen";
@@ -13,6 +14,7 @@ import OrderDetailScreen from "../screens/order/OrderDetailScreen";
 import QrCodeScreen from "../screens/qrcode/QrCodeScreen";
 import NewOrderScreen from "../screens/order/NewOrderScreen";
 import OrderScreen from "../screens/order/OrderScreen";
+import NotificationScreen from "../screens/notification/NotificationScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -41,14 +43,19 @@ function AppStack() {
 
 
             <Stack.Screen name="QrCodeScreen" component={QrCodeScreen} />
+            <Stack.Screen name="Notifications" component={NotificationScreen} />
         </Stack.Navigator>
     );
 }
 
 export default function AppNavigator() {
     const isLoggedIn = useSelector((state) => state.auth.isLoggedIn);
+    const navigationRef = useNavigationContainerRef();
+
+    usePushNotifications(navigationRef);
+
     return (
-        <NavigationContainer>
+        <NavigationContainer ref={navigationRef}>
             {isLoggedIn ? <AppStack /> : <AuthStack />}
         </NavigationContainer>
     );

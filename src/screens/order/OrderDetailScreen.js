@@ -551,12 +551,12 @@ export default function OrderDetailScreen({ route, navigation }) {
                 />
 
                 {/* Vendor card */}
-                <VendorCard
+                {/* <VendorCard
                     vendorName={order.assignedVendor}
                     vendorId={order.vendorId}
                     city={order.city}
                     contactNo={order.contactNo}
-                />
+                /> */}
 
                 {/* Financial summary */}
                 <FinancialSummaryCard

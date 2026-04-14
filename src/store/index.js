@@ -7,6 +7,8 @@ import themeReducer from "./slices/themeSlice";
 import userReducer from "./slices/userSlice";
 import locationReducer from "./slices/locationSlice";
 
+import notificationReducer from "./slices/notificationSlice";
+
 const authPersistConfig = {
     key: "auth",
     storage: AsyncStorage,
@@ -21,6 +23,7 @@ export const store = configureStore({
         theme: themeReducer,
         user: userReducer,
         location: locationReducer,
+        notification: notificationReducer,
     },
     middleware: (getDefaultMiddleware) =>
         getDefaultMiddleware({
