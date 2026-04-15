@@ -516,7 +516,7 @@ function LocationStep({
         try {
             const { status } = await Location.requestForegroundPermissionsAsync();
             if (status !== 'granted') {
-                setLocationUnavailable(true); // ← show fallback UI
+                setLocationUnavailable(true);
                 setLoading(false);
                 return;
             }
@@ -528,13 +528,13 @@ function LocationStep({
             const geo = await Location.reverseGeocodeAsync({ latitude, longitude });
             if (geo.length > 0) {
                 const g = geo[0];
-                setLocationText([g.street, g.district, g.city, g.region].filter(Boolean).join(', '));
+                setLocationText([g.name, g.streetNumber, g.street, g.district, g.subregion, g.city, g.region, g.postalCode].filter(Boolean).join(', '));
                 if (g.city) onCityChange(g.city);
                 else if (g.region) onCityChange(g.region);
             }
             await checkArea(latitude, longitude);
         } catch {
-            setLocationUnavailable(true); // ← also show fallback on any error
+            setLocationUnavailable(true);
             setAlert({ type: 'error', message: 'Could not detect location. Please enter it manually.' });
         } finally {
             setLoading(false);
@@ -554,7 +554,7 @@ function LocationStep({
                     results.slice(0, 5).map(async (r) => {
                         const rev = await Location.reverseGeocodeAsync({ latitude: r.latitude, longitude: r.longitude });
                         const g = rev[0] || {};
-                        const label = [g.name, g.street, g.district, g.city, g.region].filter(Boolean).join(', ');
+                        const label = [g.name, g.streetNumber, g.street, g.district, g.subregion, g.city, g.region, g.postalCode].filter(Boolean).join(', ');
                         return { label, latitude: r.latitude, longitude: r.longitude };
                     })
                 );
@@ -593,7 +593,7 @@ function LocationStep({
                     results.slice(0, 5).map(async (r) => {
                         const rev = await Location.reverseGeocodeAsync({ latitude: r.latitude, longitude: r.longitude });
                         const g = rev[0] || {};
-                        const label = [g.name, g.street, g.district, g.city, g.region].filter(Boolean).join(', ');
+                        const label = [g.name, g.streetNumber, g.street, g.district, g.subregion, g.city, g.region, g.postalCode].filter(Boolean).join(', ');
                         return { label, latitude: r.latitude, longitude: r.longitude };
                     })
                 );
@@ -623,7 +623,7 @@ function LocationStep({
             const geo = await Location.reverseGeocodeAsync({ latitude, longitude });
             if (geo.length > 0) {
                 const g = geo[0];
-                setLocationText([g.street, g.district, g.city, g.region].filter(Boolean).join(', '));
+                setLocationText([g.name, g.streetNumber, g.street, g.district, g.subregion, g.city, g.region, g.postalCode].filter(Boolean).join(', '));
                 if (g.city) onCityChange(g.city);
                 else if (g.region) onCityChange(g.region);
             }
@@ -1410,6 +1410,7 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
             email: user?.email || '',
             contactNo: contact.trim(),
             city: city.toUpperCase(),
+            address: locationText,
             userLocation: {
                 type: "Point",
                 coordinates: [coords.longitude, coords.latitude]
@@ -1435,7 +1436,7 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
             status: 'Pending',
             referralProcessed: false,
         };
-
+        console.log(payload, "Payload from the new order form ")
         onSubmit(payload);
     };
 
