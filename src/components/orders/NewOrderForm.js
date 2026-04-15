@@ -435,11 +435,29 @@ function SavedBikeCard({ bike, selected, onPress, theme, isDark }) {
 }
 
 // ─── Location step with city & distance callbacks ────────────────────────────
-function LocationStep({ theme, isDark, locationText, setLocationText, setCoords, isServiceable, setIsServiceable, onCityChange, onDistanceChange, onNext }) {
+
+function LocationStep({
+    theme,
+    isDark,
+    locationText,
+    setLocationText,
+    setCoords,
+    isServiceable,
+    setIsServiceable,
+    onCityChange,
+    onDistanceChange,
+    onNext,
+}) {
     const [loading, setLoading] = useState(false);
     const [checking, setChecking] = useState(false);
     const [alert, setAlert] = useState(null);
     const [mapVisible, setMapVisible] = useState(false);
+    const [locationUnavailable, setLocationUnavailable] = useState(false); // NEW
+    const [showManualSearch, setShowManualSearch] = useState(false);       // NEW
+    const [manualQuery, setManualQuery] = useState('');                    // NEW
+    const [manualResults, setManualResults] = useState([]);                // NEW
+    const [manualSearchLoading, setManualSearchLoading] = useState(false); // NEW
+
     const [mapRegion, setMapRegion] = useState({
         latitude: 25.5941,
         longitude: 85.1376,
@@ -450,7 +468,9 @@ function LocationStep({ theme, isDark, locationText, setLocationText, setCoords,
     const [searchQuery, setSearchQuery] = useState('');
     const [searchResults, setSearchResults] = useState([]);
     const [searchLoading, setSearchLoading] = useState(false);
+
     const searchTimeout = useRef(null);
+    const manualSearchTimeout = useRef(null);
     const checkTimeout = useRef(null);
 
     useEffect(() => { autoDetect(); }, []);
@@ -458,21 +478,17 @@ function LocationStep({ theme, isDark, locationText, setLocationText, setCoords,
         return () => {
             if (checkTimeout.current) clearTimeout(checkTimeout.current);
             if (searchTimeout.current) clearTimeout(searchTimeout.current);
+            if (manualSearchTimeout.current) clearTimeout(manualSearchTimeout.current);
         };
     }, []);
 
     const extractCityFromGeocode = async (lat, lng) => {
         try {
             const geo = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lng });
-            if (geo.length > 0 && geo[0].city) {
-                onCityChange(geo[0].city);
-            } else if (geo.length > 0 && geo[0].region) {
-                onCityChange(geo[0].region);
-            } else {
-                onCityChange('');
-            }
-        } catch (error) {
-            console.warn('Reverse geocode for city failed', error);
+            if (geo.length > 0 && geo[0].city) onCityChange(geo[0].city);
+            else if (geo.length > 0 && geo[0].region) onCityChange(geo[0].region);
+            else onCityChange('');
+        } catch {
             onCityChange('');
         }
     };
@@ -483,21 +499,27 @@ function LocationStep({ theme, isDark, locationText, setLocationText, setCoords,
             const res = await axiosClient.post('/api/service-areas/check', { latitude: lat, longitude: lng });
             const ok = res.data?.serviceable ?? false;
             setIsServiceable(ok);
-            if (res.data?.distance !== undefined) {
-                onDistanceChange(res.data.distance);
-            }
+            if (res.data?.distance !== undefined) onDistanceChange(res.data.distance);
             if (!ok) setAlert({ type: 'error', message: res.data?.message || "Sorry, we don't service this area yet." });
         } catch {
             setIsServiceable(false);
             setAlert({ type: 'error', message: 'Could not verify serviceability.' });
-        } finally { setChecking(false); }
+        } finally {
+            setChecking(false);
+        }
     };
 
     const autoDetect = async () => {
-        setLoading(true); setIsServiceable(null);
+        setLoading(true);
+        setIsServiceable(null);
+        setLocationUnavailable(false);
         try {
             const { status } = await Location.requestForegroundPermissionsAsync();
-            if (status !== 'granted') { setLoading(false); return; }
+            if (status !== 'granted') {
+                setLocationUnavailable(true); // ← show fallback UI
+                setLoading(false);
+                return;
+            }
             const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
             const { latitude, longitude } = loc.coords;
             setCoords({ latitude, longitude });
@@ -512,10 +534,53 @@ function LocationStep({ theme, isDark, locationText, setLocationText, setCoords,
             }
             await checkArea(latitude, longitude);
         } catch {
-            setAlert({ type: 'error', message: 'Could not detect location.' });
-        } finally { setLoading(false); }
+            setLocationUnavailable(true); // ← also show fallback on any error
+            setAlert({ type: 'error', message: 'Could not detect location. Please enter it manually.' });
+        } finally {
+            setLoading(false);
+        }
     };
 
+    // ── Manual search ─────────────────────────────────────────────────────────
+    const handleManualQueryChange = (text) => {
+        setManualQuery(text);
+        if (manualSearchTimeout.current) clearTimeout(manualSearchTimeout.current);
+        if (!text.trim()) { setManualResults([]); return; }
+        manualSearchTimeout.current = setTimeout(async () => {
+            setManualSearchLoading(true);
+            try {
+                const results = await Location.geocodeAsync(text);
+                const named = await Promise.all(
+                    results.slice(0, 5).map(async (r) => {
+                        const rev = await Location.reverseGeocodeAsync({ latitude: r.latitude, longitude: r.longitude });
+                        const g = rev[0] || {};
+                        const label = [g.name, g.street, g.district, g.city, g.region].filter(Boolean).join(', ');
+                        return { label, latitude: r.latitude, longitude: r.longitude };
+                    })
+                );
+                setManualResults(named);
+            } catch {
+                setManualResults([]);
+            } finally {
+                setManualSearchLoading(false);
+            }
+        }, 600);
+    };
+
+    const handleManualSelect = async (result) => {
+        setManualQuery('');
+        setManualResults([]);
+        setShowManualSearch(false);
+        setLocationUnavailable(false);
+        setCoords({ latitude: result.latitude, longitude: result.longitude });
+        setPinCoords({ latitude: result.latitude, longitude: result.longitude });
+        setMapRegion({ latitude: result.latitude, longitude: result.longitude, latitudeDelta: 0.01, longitudeDelta: 0.01 });
+        setLocationText(result.label);
+        await extractCityFromGeocode(result.latitude, result.longitude);
+        await checkArea(result.latitude, result.longitude);
+    };
+
+    // ── In-map search (existing) ──────────────────────────────────────────────
     const handleSearchChange = (text) => {
         setSearchQuery(text);
         if (searchTimeout.current) clearTimeout(searchTimeout.current);
@@ -533,8 +598,11 @@ function LocationStep({ theme, isDark, locationText, setLocationText, setCoords,
                     })
                 );
                 setSearchResults(named);
-            } catch { setSearchResults([]); }
-            finally { setSearchLoading(false); }
+            } catch {
+                setSearchResults([]);
+            } finally {
+                setSearchLoading(false);
+            }
         }, 600);
     };
 
@@ -562,15 +630,14 @@ function LocationStep({ theme, isDark, locationText, setLocationText, setCoords,
         } catch { /* silent */ }
         if (checkTimeout.current) clearTimeout(checkTimeout.current);
         setIsServiceable(null);
-        checkTimeout.current = setTimeout(() => {
-            checkArea(latitude, longitude);
-        }, 800);
+        checkTimeout.current = setTimeout(() => { checkArea(latitude, longitude); }, 800);
     };
 
     const handleConfirmMapLocation = () => {
         if (!pinCoords || !isServiceable) return;
         setCoords(pinCoords);
         setMapVisible(false);
+        setLocationUnavailable(false);
         setSearchResults([]);
         setSearchQuery('');
     };
@@ -581,26 +648,100 @@ function LocationStep({ theme, isDark, locationText, setLocationText, setCoords,
         setSearchQuery('');
     };
 
-    const statusColor = isServiceable === true ? theme.colors.success : isServiceable === false ? theme.colors.error : theme.colors.primary;
-    const statusIcon = isServiceable === true ? 'checkmark-circle' : isServiceable === false ? 'close-circle' : 'location';
+    const statusColor =
+        isServiceable === true ? theme.colors.success :
+            isServiceable === false ? theme.colors.error :
+                theme.colors.primary;
+    const statusIcon =
+        isServiceable === true ? 'checkmark-circle' :
+            isServiceable === false ? 'close-circle' :
+                'location';
 
+    // ────────────────────────────────────────────────────────────────────────
     return (
         <View>
-            {alert && <Alert type={alert.type} message={alert.message} visible onDismiss={() => setAlert(null)} autoDismiss={4000} style={{ marginBottom: 14 }} />}
-            <View style={{ borderRadius: 20, overflow: 'hidden', borderWidth: 1.5, borderColor: isServiceable === true ? theme.colors.success + '55' : isServiceable === false ? theme.colors.error + '55' : theme.colors.border, backgroundColor: isDark ? theme.colors.surfaceLow : '#FFF', marginBottom: 16 }}>
-                <View style={{ height: 4, backgroundColor: statusColor + (isServiceable === null ? '60' : 'CC') }} />
+            {alert && (
+                <Alert
+                    type={alert.type}
+                    message={alert.message}
+                    visible
+                    onDismiss={() => setAlert(null)}
+                    autoDismiss={4000}
+                    style={{ marginBottom: 14 }}
+                />
+            )}
+
+            {/* ── Location status card ───────────────────────────── */}
+            <View style={{
+                borderRadius: 20,
+                overflow: 'hidden',
+                borderWidth: 1.5,
+                borderColor:
+                    locationUnavailable ? theme.colors.warning + '55' :
+                        isServiceable === true ? theme.colors.success + '55' :
+                            isServiceable === false ? theme.colors.error + '55' :
+                                theme.colors.border,
+                backgroundColor: isDark ? theme.colors.surfaceLow : '#FFF',
+                marginBottom: 16,
+            }}>
+                <View style={{
+                    height: 4,
+                    backgroundColor:
+                        locationUnavailable ? theme.colors.warning :
+                            statusColor + (isServiceable === null ? '60' : 'CC'),
+                }} />
                 <View style={{ padding: 18, flexDirection: 'row', alignItems: 'center', gap: 14 }}>
                     {loading ? (
-                        <><ActivityIndicator size="small" color={theme.colors.primary} /><View style={{ flex: 1 }}><Text style={{ fontSize: 14, color: theme.colors.textMuted, fontWeight: '500' }}>Detecting your location…</Text></View></>
-                    ) : (
                         <>
-                            <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: statusColor + '20', alignItems: 'center', justifyContent: 'center' }}>
+                            <ActivityIndicator size="small" color={theme.colors.primary} />
+                            <View style={{ flex: 1 }}>
+                                <Text style={{ fontSize: 14, color: theme.colors.textMuted, fontWeight: '500' }}>
+                                    Detecting your location…
+                                </Text>
+                            </View>
+                        </>
+                    ) : locationUnavailable ? (
+                        /* ── Location unavailable state ── */
+                        <>
+                            <View style={{
+                                width: 44, height: 44, borderRadius: 22,
+                                backgroundColor: theme.colors.warning + '20',
+                                alignItems: 'center', justifyContent: 'center',
+                            }}>
+                                <Ionicons name="location-outline" size={24} color={theme.colors.warning} />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                                <Text style={{ fontSize: 14, fontWeight: '700', color: theme.colors.textPrimary, lineHeight: 20 }}>
+                                    Location unavailable
+                                </Text>
+                                <Text style={{ fontSize: 12, color: theme.colors.textMuted, fontWeight: '500', marginTop: 3 }}>
+                                    Permission denied or GPS off
+                                </Text>
+                            </View>
+                            <TouchableOpacity onPress={autoDetect} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                                <Ionicons name="refresh" size={20} color={theme.colors.primary} />
+                            </TouchableOpacity>
+                        </>
+                    ) : (
+                        /* ── Normal detected state ── */
+                        <>
+                            <View style={{
+                                width: 44, height: 44, borderRadius: 22,
+                                backgroundColor: statusColor + '20',
+                                alignItems: 'center', justifyContent: 'center',
+                            }}>
                                 <Ionicons name={statusIcon} size={24} color={statusColor} />
                             </View>
                             <View style={{ flex: 1 }}>
-                                <Text style={{ fontSize: 14, fontWeight: '700', color: theme.colors.textPrimary, lineHeight: 20 }} numberOfLines={2}>{locationText || 'No location detected'}</Text>
-                                {isServiceable === true && <Text style={{ fontSize: 12, color: theme.colors.success, fontWeight: '700', marginTop: 3 }}>✓ Area is serviceable</Text>}
-                                {isServiceable === false && <Text style={{ fontSize: 12, color: theme.colors.error, fontWeight: '700', marginTop: 3 }}>✗ Not serviceable yet</Text>}
+                                <Text style={{ fontSize: 14, fontWeight: '700', color: theme.colors.textPrimary, lineHeight: 20 }} numberOfLines={2}>
+                                    {locationText || 'No location detected'}
+                                </Text>
+                                {isServiceable === true && (
+                                    <Text style={{ fontSize: 12, color: theme.colors.success, fontWeight: '700', marginTop: 3 }}>✓ Area is serviceable</Text>
+                                )}
+                                {isServiceable === false && (
+                                    <Text style={{ fontSize: 12, color: theme.colors.error, fontWeight: '700', marginTop: 3 }}>✗ Not serviceable yet</Text>
+                                )}
                             </View>
                             <TouchableOpacity onPress={autoDetect} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                                 <Ionicons name="refresh" size={20} color={theme.colors.primary} />
@@ -609,67 +750,370 @@ function LocationStep({ theme, isDark, locationText, setLocationText, setCoords,
                     )}
                 </View>
             </View>
-            <TouchableOpacity onPress={() => setMapVisible(true)} activeOpacity={0.8} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1.5, borderColor: theme.colors.primary, borderRadius: 16, paddingVertical: 14, marginBottom: 24, backgroundColor: theme.colors.primary + (isDark ? '18' : '0D') }}>
-                <Ionicons name="map-outline" size={18} color={theme.colors.primary} />
-                <Text style={{ fontSize: 14, fontWeight: '700', color: theme.colors.primary }}>{locationText ? 'Change on Map' : 'Select on Map'}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={onNext} disabled={!isServiceable} activeOpacity={0.85} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: theme.colors.primary, paddingVertical: 17, borderRadius: 18, opacity: isServiceable ? 1 : 0.35 }}>
-                <Text style={{ fontSize: 15, fontWeight: '800', color: '#1a1a1a' }}>Confirm Location</Text>
-                <Ionicons name="arrow-forward" size={18} color="#1a1a1a" />
-            </TouchableOpacity>
 
-            {/* Map Modal */}
-            <Modal visible={mapVisible} animationType="slide" presentationStyle="fullScreen" onRequestClose={handleCloseMap} statusBarTranslucent>
+            {/* ── Fallback CTAs — shown when location is unavailable ─ */}
+            {locationUnavailable && (
+                <View style={{ gap: 10, marginBottom: 20 }}>
+                    {/* Divider with label */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+                        <View style={{ flex: 1, height: 1, backgroundColor: theme.colors.border }} />
+                        <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 0.6, color: theme.colors.textMuted, textTransform: 'uppercase' }}>
+                            Select location manually
+                        </Text>
+                        <View style={{ flex: 1, height: 1, backgroundColor: theme.colors.border }} />
+                    </View>
+
+                    {/* Option A: Type to search */}
+                    <TouchableOpacity
+                        onPress={() => { setShowManualSearch(true); }}
+                        activeOpacity={0.8}
+                        style={{
+                            flexDirection: 'row', alignItems: 'center', gap: 12,
+                            borderWidth: 1.5, borderColor: theme.colors.primary,
+                            borderRadius: 16, paddingVertical: 15, paddingHorizontal: 18,
+                            backgroundColor: theme.colors.primary + (isDark ? '18' : '0D'),
+                        }}
+                    >
+                        <View style={{
+                            width: 38, height: 38, borderRadius: 19,
+                            backgroundColor: theme.colors.primary + '25',
+                            alignItems: 'center', justifyContent: 'center',
+                        }}>
+                            <Ionicons name="search-outline" size={18} color={theme.colors.primary} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 14, fontWeight: '700', color: theme.colors.primary }}>
+                                Search by name
+                            </Text>
+                            <Text style={{ fontSize: 12, color: theme.colors.textMuted, fontWeight: '500', marginTop: 2 }}>
+                                Type area, street or landmark
+                            </Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={16} color={theme.colors.primary} />
+                    </TouchableOpacity>
+
+                    {/* Option B: Pick on map */}
+                    <TouchableOpacity
+                        onPress={() => setMapVisible(true)}
+                        activeOpacity={0.8}
+                        style={{
+                            flexDirection: 'row', alignItems: 'center', gap: 12,
+                            borderWidth: 1.5, borderColor: theme.colors.border,
+                            borderRadius: 16, paddingVertical: 15, paddingHorizontal: 18,
+                            backgroundColor: isDark ? theme.colors.surfaceLow : '#FFF',
+                        }}
+                    >
+                        <View style={{
+                            width: 38, height: 38, borderRadius: 19,
+                            backgroundColor: theme.colors.border + '88',
+                            alignItems: 'center', justifyContent: 'center',
+                        }}>
+                            <Ionicons name="map-outline" size={18} color={theme.colors.textSecondary} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 14, fontWeight: '700', color: theme.colors.textPrimary }}>
+                                Choose on Map
+                            </Text>
+                            <Text style={{ fontSize: 12, color: theme.colors.textMuted, fontWeight: '500', marginTop: 2 }}>
+                                Drag and pin your exact spot
+                            </Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={16} color={theme.colors.textMuted} />
+                    </TouchableOpacity>
+                </View>
+            )}
+
+            {/* ── Manual search panel (inline, shown on demand) ───── */}
+            {showManualSearch && (
+                <View style={{
+                    borderRadius: 20, borderWidth: 1.5,
+                    borderColor: theme.colors.primary + '44',
+                    backgroundColor: isDark ? theme.colors.surfaceLow : '#FFF',
+                    marginBottom: 16, overflow: 'hidden',
+                }}>
+                    {/* Header */}
+                    <View style={{
+                        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                        paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10,
+                        borderBottomWidth: 1, borderBottomColor: theme.colors.border,
+                    }}>
+                        <Text style={{ fontSize: 13, fontWeight: '800', color: theme.colors.textPrimary, letterSpacing: 0.2 }}>
+                            Search Location
+                        </Text>
+                        <TouchableOpacity
+                            onPress={() => { setShowManualSearch(false); setManualQuery(''); setManualResults([]); }}
+                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        >
+                            <Ionicons name="close" size={18} color={theme.colors.textMuted} />
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* Search input */}
+                    <View style={{
+                        flexDirection: 'row', alignItems: 'center', gap: 8,
+                        paddingHorizontal: 14, paddingVertical: 12,
+                        borderBottomWidth: manualResults.length > 0 ? 1 : 0,
+                        borderBottomColor: theme.colors.border,
+                    }}>
+                        <Ionicons name="search" size={16} color={theme.colors.textMuted} />
+                        <TextInput
+                            value={manualQuery}
+                            onChangeText={handleManualQueryChange}
+                            placeholder="Type area, street or landmark…"
+                            placeholderTextColor={theme.colors.textMuted}
+                            autoFocus
+                            style={{
+                                flex: 1, fontSize: 14, color: theme.colors.textPrimary,
+                                fontWeight: '500', paddingVertical: Platform.OS === 'ios' ? 4 : 0,
+                            }}
+                        />
+                        {manualSearchLoading && <ActivityIndicator size="small" color={theme.colors.primary} />}
+                        {manualQuery.length > 0 && !manualSearchLoading && (
+                            <TouchableOpacity onPress={() => { setManualQuery(''); setManualResults([]); }}>
+                                <Ionicons name="close-circle" size={16} color={theme.colors.textMuted} />
+                            </TouchableOpacity>
+                        )}
+                    </View>
+
+                    {/* Results */}
+                    {manualResults.length > 0 && (
+                        <View>
+                            {manualResults.map((r, i) => (
+                                <TouchableOpacity
+                                    key={i}
+                                    onPress={() => handleManualSelect(r)}
+                                    activeOpacity={0.75}
+                                    style={{
+                                        flexDirection: 'row', alignItems: 'center', gap: 10,
+                                        paddingHorizontal: 14, paddingVertical: 13,
+                                        borderBottomWidth: i < manualResults.length - 1 ? 1 : 0,
+                                        borderBottomColor: theme.colors.border,
+                                    }}
+                                >
+                                    <View style={{
+                                        width: 32, height: 32, borderRadius: 16,
+                                        backgroundColor: theme.colors.primary + '18',
+                                        alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                                    }}>
+                                        <Ionicons name="location-outline" size={15} color={theme.colors.primary} />
+                                    </View>
+                                    <Text style={{ flex: 1, fontSize: 13, color: theme.colors.textPrimary, fontWeight: '500', lineHeight: 18 }} numberOfLines={2}>
+                                        {r.label}
+                                    </Text>
+                                    <Ionicons name="chevron-forward" size={14} color={theme.colors.textMuted} />
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    )}
+
+                    {/* Empty state */}
+                    {manualQuery.length > 2 && manualResults.length === 0 && !manualSearchLoading && (
+                        <View style={{ alignItems: 'center', paddingVertical: 20, gap: 6 }}>
+                            <Ionicons name="search-outline" size={28} color={theme.colors.textMuted} />
+                            <Text style={{ fontSize: 13, color: theme.colors.textMuted, fontWeight: '500' }}>
+                                No results found
+                            </Text>
+                            <Text style={{ fontSize: 12, color: theme.colors.textMuted }}>
+                                Try a different area or landmark
+                            </Text>
+                        </View>
+                    )}
+                </View>
+            )}
+
+            {/* ── "Change on Map" button — shown when location IS detected ─ */}
+            {!locationUnavailable && (
+                <TouchableOpacity
+                    onPress={() => setMapVisible(true)}
+                    activeOpacity={0.8}
+                    style={{
+                        flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+                        borderWidth: 1.5, borderColor: theme.colors.primary,
+                        borderRadius: 16, paddingVertical: 14, marginBottom: 24,
+                        backgroundColor: theme.colors.primary + (isDark ? '18' : '0D'),
+                    }}
+                >
+                    <Ionicons name="map-outline" size={18} color={theme.colors.primary} />
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: theme.colors.primary }}>
+                        {locationText ? 'Change on Map' : 'Select on Map'}
+                    </Text>
+                </TouchableOpacity>
+            )}
+
+            {/* ── Confirm button ─────────────────────────────────────── */}
+            {!locationUnavailable && (
+                <TouchableOpacity
+                    onPress={onNext}
+                    disabled={!isServiceable}
+                    activeOpacity={0.85}
+                    style={{
+                        flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
+                        backgroundColor: theme.colors.primary,
+                        paddingVertical: 17, borderRadius: 18,
+                        opacity: isServiceable ? 1 : 0.35,
+                    }}
+                >
+                    <Text style={{ fontSize: 15, fontWeight: '800', color: '#1a1a1a' }}>Confirm Location</Text>
+                    <Ionicons name="arrow-forward" size={18} color="#1a1a1a" />
+                </TouchableOpacity>
+            )}
+
+            {/* ── Map Modal (unchanged from original) ────────────────── */}
+            <Modal
+                visible={mapVisible}
+                animationType="slide"
+                presentationStyle="fullScreen"
+                onRequestClose={handleCloseMap}
+                statusBarTranslucent
+            >
                 <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
                 <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-                    <View style={{ paddingTop: Platform.OS === 'ios' ? 54 : (StatusBar.currentHeight || 0) + 12, paddingHorizontal: 16, paddingBottom: 12, backgroundColor: isDark ? theme.colors.surfaceLow : '#FFF', borderBottomWidth: 1, borderBottomColor: theme.colors.border, zIndex: 10 }}>
+                    {/* Map header */}
+                    <View style={{
+                        paddingTop: Platform.OS === 'ios' ? 54 : (StatusBar.currentHeight || 0) + 12,
+                        paddingHorizontal: 16, paddingBottom: 12,
+                        backgroundColor: isDark ? theme.colors.surfaceLow : '#FFF',
+                        borderBottomWidth: 1, borderBottomColor: theme.colors.border, zIndex: 10,
+                    }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-                            <TouchableOpacity onPress={handleCloseMap} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="arrow-back" size={22} color={theme.colors.textPrimary} /></TouchableOpacity>
+                            <TouchableOpacity onPress={handleCloseMap} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                                <Ionicons name="arrow-back" size={22} color={theme.colors.textPrimary} />
+                            </TouchableOpacity>
                             <Text style={{ fontSize: 16, fontWeight: '800', color: theme.colors.textPrimary }}>Select Location</Text>
                         </View>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? theme.colors.surfaceHigh : theme.colors.background, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1.5, borderColor: theme.colors.border, gap: 8 }}>
+                        <View style={{
+                            flexDirection: 'row', alignItems: 'center',
+                            backgroundColor: isDark ? theme.colors.surfaceHigh : theme.colors.background,
+                            borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10,
+                            borderWidth: 1.5, borderColor: theme.colors.border, gap: 8,
+                        }}>
                             <Ionicons name="search" size={16} color={theme.colors.textMuted} />
-                            <TextInput value={searchQuery} onChangeText={handleSearchChange} placeholder="Search area, street, landmark…" placeholderTextColor={theme.colors.textMuted} style={{ flex: 1, fontSize: 14, color: theme.colors.textPrimary, fontWeight: '500' }} autoCorrect={false} returnKeyType="search" />
+                            <TextInput
+                                value={searchQuery}
+                                onChangeText={handleSearchChange}
+                                placeholder="Search area, street, landmark…"
+                                placeholderTextColor={theme.colors.textMuted}
+                                style={{ flex: 1, fontSize: 14, color: theme.colors.textPrimary, fontWeight: '500' }}
+                                autoCorrect={false}
+                                returnKeyType="search"
+                            />
                             {searchLoading && <ActivityIndicator size="small" color={theme.colors.primary} />}
-                            {searchQuery.length > 0 && !searchLoading && (<TouchableOpacity onPress={() => { setSearchQuery(''); setSearchResults([]); }}><Ionicons name="close-circle" size={16} color={theme.colors.textMuted} /></TouchableOpacity>)}
+                            {searchQuery.length > 0 && !searchLoading && (
+                                <TouchableOpacity onPress={() => { setSearchQuery(''); setSearchResults([]); }}>
+                                    <Ionicons name="close-circle" size={16} color={theme.colors.textMuted} />
+                                </TouchableOpacity>
+                            )}
                         </View>
                         {searchResults.length > 0 && (
-                            <View style={{ position: 'absolute', top: Platform.OS === 'ios' ? 130 : (StatusBar.currentHeight || 0) + 96, left: 16, right: 16, backgroundColor: isDark ? theme.colors.surfaceLow : '#FFF', borderRadius: 14, borderWidth: 1.5, borderColor: theme.colors.border, zIndex: 20, overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 8, elevation: 8 }}>
+                            <View style={{
+                                position: 'absolute',
+                                top: Platform.OS === 'ios' ? 130 : (StatusBar.currentHeight || 0) + 96,
+                                left: 16, right: 16,
+                                backgroundColor: isDark ? theme.colors.surfaceLow : '#FFF',
+                                borderRadius: 14, borderWidth: 1.5, borderColor: theme.colors.border,
+                                zIndex: 20, overflow: 'hidden',
+                                shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 8, elevation: 8,
+                            }}>
                                 {searchResults.map((r, i) => (
-                                    <TouchableOpacity key={i} onPress={() => handleSearchSelect(r)} activeOpacity={0.75} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: i < searchResults.length - 1 ? 1 : 0, borderBottomColor: theme.colors.border }}>
-                                        <View style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: theme.colors.primary + '18', alignItems: 'center', justifyContent: 'center' }}><Ionicons name="location-outline" size={14} color={theme.colors.primary} /></View>
+                                    <TouchableOpacity
+                                        key={i}
+                                        onPress={() => handleSearchSelect(r)}
+                                        activeOpacity={0.75}
+                                        style={{
+                                            flexDirection: 'row', alignItems: 'center', gap: 10,
+                                            paddingHorizontal: 14, paddingVertical: 12,
+                                            borderBottomWidth: i < searchResults.length - 1 ? 1 : 0,
+                                            borderBottomColor: theme.colors.border,
+                                        }}
+                                    >
+                                        <View style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: theme.colors.primary + '18', alignItems: 'center', justifyContent: 'center' }}>
+                                            <Ionicons name="location-outline" size={14} color={theme.colors.primary} />
+                                        </View>
                                         <Text style={{ flex: 1, fontSize: 13, color: theme.colors.textPrimary, fontWeight: '500' }} numberOfLines={2}>{r.label}</Text>
                                     </TouchableOpacity>
                                 ))}
                             </View>
                         )}
                     </View>
+
+                    {/* Map */}
                     <View style={{ flex: 1 }}>
-                        <MapView style={{ flex: 1 }} provider={PROVIDER_GOOGLE} region={mapRegion} onRegionChangeComplete={handleRegionChangeComplete} showsUserLocation showsMyLocationButton={false} zoomControlEnabled zoomEnabled scrollEnabled rotateEnabled pitchEnabled />
+                        <MapView
+                            style={{ flex: 1 }}
+                            provider={PROVIDER_GOOGLE}
+                            region={mapRegion}
+                            onRegionChangeComplete={handleRegionChangeComplete}
+                            showsUserLocation
+                            showsMyLocationButton={false}
+                            zoomControlEnabled zoomEnabled scrollEnabled rotateEnabled pitchEnabled
+                        />
+                        {/* Pin overlay */}
                         <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
                             <View style={{ alignItems: 'center', marginBottom: 48 }}>
-                                <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 6, elevation: 8 }}><Ionicons name="location" size={22} color="#1a1a1a" /></View>
+                                <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 6, elevation: 8 }}>
+                                    <Ionicons name="location" size={22} color="#1a1a1a" />
+                                </View>
                                 <View style={{ width: 2, height: 10, backgroundColor: theme.colors.primary }} />
                                 <View style={{ width: 8, height: 4, borderRadius: 4, backgroundColor: '#00000030' }} />
                             </View>
                         </View>
-                        <TouchableOpacity onPress={autoDetect} style={{ position: 'absolute', bottom: 160, right: 16, width: 46, height: 46, borderRadius: 23, backgroundColor: isDark ? theme.colors.surfaceLow : '#FFF', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: theme.colors.border, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 4, elevation: 4 }}><Ionicons name="navigate" size={20} color={theme.colors.primary} /></TouchableOpacity>
+                        {/* Re-centre button */}
+                        <TouchableOpacity
+                            onPress={autoDetect}
+                            style={{
+                                position: 'absolute', bottom: 160, right: 16,
+                                width: 46, height: 46, borderRadius: 23,
+                                backgroundColor: isDark ? theme.colors.surfaceLow : '#FFF',
+                                alignItems: 'center', justifyContent: 'center',
+                                borderWidth: 1.5, borderColor: theme.colors.border,
+                                shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 4, elevation: 4,
+                            }}
+                        >
+                            <Ionicons name="navigate" size={20} color={theme.colors.primary} />
+                        </TouchableOpacity>
                     </View>
-                    <View style={{ backgroundColor: isDark ? theme.colors.surfaceLow : '#FFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, borderTopWidth: 1, borderTopColor: theme.colors.border, padding: 20, paddingBottom: Platform.OS === 'ios' ? 36 : 20, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, elevation: 8 }}>
+
+                    {/* Bottom sheet */}
+                    <View style={{
+                        backgroundColor: isDark ? theme.colors.surfaceLow : '#FFF',
+                        borderTopLeftRadius: 24, borderTopRightRadius: 24,
+                        borderTopWidth: 1, borderTopColor: theme.colors.border,
+                        padding: 20, paddingBottom: Platform.OS === 'ios' ? 36 : 20,
+                        shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, elevation: 8,
+                    }}>
                         {checking ? (
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16 }}><ActivityIndicator size="small" color={theme.colors.primary} /><Text style={{ fontSize: 13, color: theme.colors.textMuted, fontWeight: '500' }}>Checking serviceability…</Text></View>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                                <ActivityIndicator size="small" color={theme.colors.primary} />
+                                <Text style={{ fontSize: 13, color: theme.colors.textMuted, fontWeight: '500' }}>Checking serviceability…</Text>
+                            </View>
                         ) : isServiceable === null ? (
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16 }}><ActivityIndicator size="small" color={theme.colors.textMuted} /><Text style={{ fontSize: 13, color: theme.colors.textMuted, fontWeight: '500' }}>Move the map to select location…</Text></View>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                                <ActivityIndicator size="small" color={theme.colors.textMuted} />
+                                <Text style={{ fontSize: 13, color: theme.colors.textMuted, fontWeight: '500' }}>Move the map to select location…</Text>
+                            </View>
                         ) : (
                             <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 16 }}>
                                 <Ionicons name={isServiceable ? 'checkmark-circle' : 'close-circle'} size={18} color={isServiceable ? theme.colors.success : theme.colors.error} style={{ marginTop: 1 }} />
                                 <View style={{ flex: 1 }}>
-                                    <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 0.5, marginBottom: 3, textTransform: 'uppercase', color: isServiceable ? theme.colors.success : theme.colors.error }}>{isServiceable ? '✓ Area is serviceable' : '✗ Not serviceable yet'}</Text>
-                                    <Text style={{ fontSize: 14, fontWeight: '600', color: theme.colors.textPrimary, lineHeight: 20 }} numberOfLines={2}>{locationText || 'Move the map to select a location'}</Text>
+                                    <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 0.5, marginBottom: 3, textTransform: 'uppercase', color: isServiceable ? theme.colors.success : theme.colors.error }}>
+                                        {isServiceable ? '✓ Area is serviceable' : '✗ Not serviceable yet'}
+                                    </Text>
+                                    <Text style={{ fontSize: 14, fontWeight: '600', color: theme.colors.textPrimary, lineHeight: 20 }} numberOfLines={2}>
+                                        {locationText || 'Move the map to select a location'}
+                                    </Text>
                                 </View>
                             </View>
                         )}
-                        <TouchableOpacity onPress={handleConfirmMapLocation} disabled={checking || !pinCoords || isServiceable === null || isServiceable === false} activeOpacity={0.85} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: theme.colors.primary, paddingVertical: 16, borderRadius: 16, opacity: (checking || !pinCoords || isServiceable === null || isServiceable === false) ? 0.4 : 1 }}>
+                        <TouchableOpacity
+                            onPress={handleConfirmMapLocation}
+                            disabled={checking || !pinCoords || isServiceable === null || isServiceable === false}
+                            activeOpacity={0.85}
+                            style={{
+                                flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+                                backgroundColor: theme.colors.primary, paddingVertical: 16, borderRadius: 16,
+                                opacity: (checking || !pinCoords || isServiceable === null || isServiceable === false) ? 0.4 : 1,
+                            }}
+                        >
                             <Text style={{ fontSize: 15, fontWeight: '800', color: '#1a1a1a' }}>Confirm This Location</Text>
                             <Ionicons name="checkmark-circle" size={18} color="#1a1a1a" />
                         </TouchableOpacity>
@@ -679,7 +1123,6 @@ function LocationStep({ theme, isDark, locationText, setLocationText, setCoords,
         </View>
     );
 }
-
 // ─── Bike step ────────────────────────────────────────────────────────────────
 function BikeStep({ theme, isDark, bikes, selectedBikeId, onSavedBikeSelect, brand, setBrand, model, setModel, customModel, setCustomModel, cc, setCc, selectedBrand, setSelectedBrand, setSelectedBikeId, bsStandard, setBsStandard }) {
     const [brandList, setBrandList] = useState([]);
