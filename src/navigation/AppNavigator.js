@@ -15,6 +15,7 @@ import QrCodeScreen from "../screens/qrcode/QrCodeScreen";
 import NewOrderScreen from "../screens/order/NewOrderScreen";
 import OrderScreen from "../screens/order/OrderScreen";
 import NotificationScreen from "../screens/notification/NotificationScreen";
+import CheckoutScreen from "../screens/payment/CheckoutScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -40,6 +41,7 @@ function AppStack() {
             <Stack.Screen name="NewOrder" component={NewOrderScreen} />
             <Stack.Screen name="OrderDetail" component={OrderDetailScreen} />
             <Stack.Screen name="Orders" component={OrderScreen} />
+            <Stack.Screen name="Checkout" component={CheckoutScreen} />
 
 
             <Stack.Screen name="QrCodeScreen" component={QrCodeScreen} />

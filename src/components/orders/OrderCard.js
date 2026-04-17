@@ -1,11 +1,4 @@
 // components/orders/OrderCard.js
-// Matches the Service History card design:
-//   - ORDER ID label + amber order number
-//   - Status badge (IN PROGRESS / COMPLETED / CANCELLED / PENDING)
-//   - Bike icon + bike name + service type
-//   - Date · Time row
-//   - Context-aware CTA button
-
 import React, { useRef, useEffect } from 'react';
 import {
     View,
@@ -18,7 +11,7 @@ import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { useSelector } from 'react-redux';
 import { LightTheme, DarkTheme } from '../../styles/Theme';
 
-// ─── Status config ────────────────────────────────────────────────────────────
+// ─── Status config (matches Order model enum) ─────────────────────────────────
 const STATUS_CONFIG = {
     pending: {
         label: 'PENDING',
@@ -26,8 +19,6 @@ const STATUS_CONFIG = {
         badgeBg: 'rgba(226,167,49,0.12)',
         badgeBorder: 'rgba(226,167,49,0.25)',
         textColor: '#E2A731',
-        ctaLabel: 'VIEW DETAILS',
-        ctaVariant: 'ghost',
     },
     mechanic_assigned: {
         label: 'MECHANIC ASSIGNED',
@@ -35,8 +26,13 @@ const STATUS_CONFIG = {
         badgeBg: 'rgba(123,104,238,0.12)',
         badgeBorder: 'rgba(123,104,238,0.25)',
         textColor: '#7B68EE',
-        ctaLabel: 'VIEW DETAILS',
-        ctaVariant: 'ghost',
+    },
+    mechanic_arrived: {
+        label: 'MECHANIC ARRIVED',
+        dotColor: '#4A90E2',
+        badgeBg: 'rgba(74,144,226,0.12)',
+        badgeBorder: 'rgba(74,144,226,0.25)',
+        textColor: '#4A90E2',
     },
     in_progress: {
         label: 'IN PROGRESS',
@@ -44,17 +40,20 @@ const STATUS_CONFIG = {
         badgeBg: 'rgba(91,140,255,0.12)',
         badgeBorder: 'rgba(91,140,255,0.25)',
         textColor: '#5B8CFF',
-        ctaLabel: 'TRACK SERVICE',
-        ctaVariant: 'primary',
     },
-    invoice_generated: {
-        label: 'INVOICE GENERATED',
+    work_completed: {
+        label: 'WORK COMPLETED',
         dotColor: '#2ECC9A',
         badgeBg: 'rgba(46,204,154,0.12)',
         badgeBorder: 'rgba(46,204,154,0.25)',
         textColor: '#2ECC9A',
-        ctaLabel: 'VIEW INVOICE',
-        ctaVariant: 'primary',
+    },
+    invoice_generated: {
+        label: 'INVOICE GENERATED',
+        dotColor: '#F39C12',
+        badgeBg: 'rgba(243,156,18,0.12)',
+        badgeBorder: 'rgba(243,156,18,0.25)',
+        textColor: '#F39C12',
     },
     completed: {
         label: 'COMPLETED',
@@ -62,8 +61,6 @@ const STATUS_CONFIG = {
         badgeBg: 'rgba(46,204,154,0.12)',
         badgeBorder: 'rgba(46,204,154,0.25)',
         textColor: '#2ECC9A',
-        ctaLabel: 'VIEW DETAILS',
-        ctaVariant: 'ghost',
     },
     cancelled: {
         label: 'CANCELLED',
@@ -71,13 +68,36 @@ const STATUS_CONFIG = {
         badgeBg: 'rgba(255,107,107,0.10)',
         badgeBorder: 'rgba(255,107,107,0.22)',
         textColor: '#FF6B6B',
-        ctaLabel: 'VIEW DETAILS',
-        ctaVariant: 'ghost',
+    },
+};
+
+// ─── Payment status config ────────────────────────────────────────────────────
+const PAYMENT_CONFIG = {
+    unpaid: {
+        label: 'UNPAID',
+        dotColor: '#FF6B6B',
+        badgeBg: 'rgba(255,107,107,0.10)',
+        badgeBorder: 'rgba(255,107,107,0.22)',
+        textColor: '#FF6B6B',
+    },
+    partial: {
+        label: 'PARTIAL',
+        dotColor: '#F39C12',
+        badgeBg: 'rgba(243,156,18,0.12)',
+        badgeBorder: 'rgba(243,156,18,0.25)',
+        textColor: '#F39C12',
+    },
+    paid: {
+        label: 'PAID',
+        dotColor: '#2ECC9A',
+        badgeBg: 'rgba(46,204,154,0.12)',
+        badgeBorder: 'rgba(46,204,154,0.25)',
+        textColor: '#2ECC9A',
     },
 };
 
 // ─── Format date helper (Hermes-safe, no Intl) ───────────────────────────────
-const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 function formatDateTime(dateStr) {
     if (!dateStr) return '';
     try {
@@ -96,15 +116,15 @@ function formatDateTime(dateStr) {
     }
 }
 
-// ─── Status badge ─────────────────────────────────────────────────────────────
-function StatusBadge({ status, cfg }) {
+// ─── Badge component (reusable) ──────────────────────────────────────────────
+function Badge({ config }) {
     return (
         <View style={[
             badgeStyles.wrap,
-            { backgroundColor: cfg.badgeBg, borderColor: cfg.badgeBorder },
+            { backgroundColor: config.badgeBg, borderColor: config.badgeBorder },
         ]}>
-            <View style={[badgeStyles.dot, { backgroundColor: cfg.dotColor }]} />
-            <Text style={[badgeStyles.label, { color: cfg.textColor }]}>{cfg.label}</Text>
+            <View style={[badgeStyles.dot, { backgroundColor: config.dotColor }]} />
+            <Text style={[badgeStyles.label, { color: config.textColor }]}>{config.label}</Text>
         </View>
     );
 }
@@ -161,16 +181,18 @@ const tileStyles = StyleSheet.create({
 /**
  * Props:
  *   order {object}:
- *     _id            string   — internal id
- *     orderId        string   — display id e.g. "RM-1234"
- *     status         string   — 'in_progress' | 'pending' | 'completed' | 'cancelled'
- *     bikeName       string   — e.g. "Ducati Panigale V4"
- *     serviceType    string   — e.g. "Full Engine Diagnostics"
- *     scheduledAt    string   — ISO date string
- *     createdAt      string   — fallback date
+ *     _id            string
+ *     orderId        string
+ *     status         string   (from model enum)
+ *     paymentStatus  string   ('unpaid'|'partial'|'paid')
+ *     selectedBrand  string
+ *     selectedModel  string
+ *     services       array
+ *     preferredDate  string
+ *     createdAt      string
  *
  *   onPress(order)   — tapped the card
- *   onCta(order)     — tapped the CTA button
+ *   onCta(order)     — tapped the "VIEW DETAILS" button
  *   delay  {number}  — stagger animation delay in ms
  */
 export default function OrderCard({ order, onPress, onCta, delay = 0 }) {
@@ -179,8 +201,14 @@ export default function OrderCard({ order, onPress, onCta, delay = 0 }) {
     const C = theme.colors;
     const isDark = mode === 'dark';
 
-    const status = (order?.status ?? 'Pending').toLowerCase().replace(/ /g, '_');
-    const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.pending;
+    // Order status mapping
+    const rawStatus = order?.status ?? 'Pending';
+    const statusKey = rawStatus.toLowerCase().replace(/ /g, '_');
+    const statusCfg = STATUS_CONFIG[statusKey] ?? STATUS_CONFIG.pending;
+
+    // Payment status mapping
+    const paymentKey = order?.paymentStatus ?? 'unpaid';
+    const paymentCfg = PAYMENT_CONFIG[paymentKey] ?? PAYMENT_CONFIG.unpaid;
 
     const displayId = order?.orderId ?? order?._id?.slice(-6)?.toUpperCase() ?? '------';
     const bikeName = `${order?.selectedBrand ?? ''} ${order?.selectedModel ?? ''}`.trim() || 'Unknown Bike';
@@ -189,7 +217,7 @@ export default function OrderCard({ order, onPress, onCta, delay = 0 }) {
         : 'Service';
     const dateStr = formatDateTime(order?.preferredDate ?? order?.createdAt);
 
-    // ── Entrance animation ────────────────────────────────────────────────────
+    // Entrance animation
     const translateY = useRef(new Animated.Value(24)).current;
     const opacity = useRef(new Animated.Value(0)).current;
 
@@ -211,17 +239,10 @@ export default function OrderCard({ order, onPress, onCta, delay = 0 }) {
         ]).start();
     }, []);
 
-    // ── Press scale ───────────────────────────────────────────────────────────
+    // Press scale
     const cardScale = useRef(new Animated.Value(1)).current;
     const pressIn = () => Animated.spring(cardScale, { toValue: 0.985, useNativeDriver: true, speed: 50 }).start();
     const pressOut = () => Animated.spring(cardScale, { toValue: 1, useNativeDriver: true, speed: 18 }).start();
-
-    // ── CTA button ────────────────────────────────────────────────────────────
-    const isPrimary = cfg.ctaVariant === 'primary';
-    const ctaBg = isPrimary
-        ? C.primary
-        : isDark ? '#2A2318' : '#EDEBE6';
-    const ctaColor = isPrimary ? '#1a1a1a' : C.textSecondary;
 
     const s = makeStyles(C, isDark);
 
@@ -235,21 +256,24 @@ export default function OrderCard({ order, onPress, onCta, delay = 0 }) {
             >
                 <View style={s.card}>
 
-                    {/* ── Top row: ORDER ID + Status badge ──────────── */}
+                    {/* Top row: ORDER ID + Status badge + Payment badge */}
                     <View style={s.topRow}>
                         <Text style={[s.orderLabel, { color: C.textMuted }]}>ORDER ID</Text>
-                        <StatusBadge status={status} cfg={cfg} />
+                        <View style={s.badgeRow}>
+                            <Badge config={statusCfg} />
+                            <Badge config={paymentCfg} />
+                        </View>
                     </View>
 
-                    {/* ── Order number ───────────────────────────────── */}
+                    {/* Order number */}
                     <Text style={[s.orderId, { color: C.primary }]}>#{displayId}</Text>
 
-                    {/* ── Divider ────────────────────────────────────── */}
+                    {/* Divider */}
                     <View style={[s.divider, { backgroundColor: C.border }]} />
 
-                    {/* ── Bike + service ─────────────────────────────── */}
+                    {/* Bike + service */}
                     <View style={s.bikeRow}>
-                        <BikeIconTile isDark={isDark} C={C} status={status} />
+                        <BikeIconTile isDark={isDark} C={C} status={statusKey} />
                         <View style={s.bikeInfo}>
                             <Text style={[s.bikeName, { color: C.textPrimary }]} numberOfLines={1}>
                                 {bikeName}
@@ -260,7 +284,7 @@ export default function OrderCard({ order, onPress, onCta, delay = 0 }) {
                         </View>
                     </View>
 
-                    {/* ── Date / time ────────────────────────────────── */}
+                    {/* Date / time */}
                     {!!dateStr && (
                         <View style={s.dateRow}>
                             <Ionicons name="calendar-outline" size={13} color={C.textMuted} />
@@ -268,13 +292,13 @@ export default function OrderCard({ order, onPress, onCta, delay = 0 }) {
                         </View>
                     )}
 
-                    {/* ── CTA button ─────────────────────────────────── */}
+                    {/* Single CTA button: VIEW DETAILS */}
                     <TouchableOpacity
-                        style={[s.ctaBtn, { backgroundColor: ctaBg }]}
+                        style={[s.ctaBtn, { backgroundColor: isDark ? '#2A2318' : '#EDEBE6' }]}
                         onPress={() => onCta?.(order)}
                         activeOpacity={0.82}
                     >
-                        <Text style={[s.ctaText, { color: ctaColor }]}>{cfg.ctaLabel}</Text>
+                        <Text style={[s.ctaText, { color: C.textSecondary }]}>VIEW DETAILS</Text>
                     </TouchableOpacity>
 
                 </View>
@@ -299,8 +323,6 @@ function makeStyles(C, isDark) {
             shadowRadius: 12,
             elevation: 4,
         },
-
-        // Top row
         topRow: {
             flexDirection: 'row',
             alignItems: 'center',
@@ -312,22 +334,20 @@ function makeStyles(C, isDark) {
             letterSpacing: 1.8,
             textTransform: 'uppercase',
         },
-
-        // Order ID
+        badgeRow: {
+            flexDirection: 'row',
+            gap: 8,
+        },
         orderId: {
             fontSize: 22,
             fontWeight: '800',
             letterSpacing: 0.5,
             marginTop: -4,
         },
-
-        // Divider
         divider: {
             height: StyleSheet.hairlineWidth,
             marginVertical: 2,
         },
-
-        // Bike row
         bikeRow: {
             flexDirection: 'row',
             alignItems: 'center',
@@ -346,8 +366,6 @@ function makeStyles(C, isDark) {
             fontSize: 12,
             letterSpacing: 0.1,
         },
-
-        // Date
         dateRow: {
             flexDirection: 'row',
             alignItems: 'center',
@@ -357,8 +375,6 @@ function makeStyles(C, isDark) {
             fontSize: 12,
             letterSpacing: 0.1,
         },
-
-        // CTA
         ctaBtn: {
             borderRadius: 12,
             paddingVertical: 14,

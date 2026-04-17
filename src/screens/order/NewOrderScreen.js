@@ -49,6 +49,8 @@ export default function NewOrderScreen() {
 
             <Loader visible={loading} message="Booking your service..." />
 
+           // screens/order/NewOrderScreen.js (excerpt)
+
             <PopUp
                 visible={successPopup}
                 type="success"
@@ -56,8 +58,21 @@ export default function NewOrderScreen() {
                 message="Your service request has been placed. Our team will contact you shortly."
                 primaryLabel="View Order"
                 secondaryLabel="Go Home"
-                onPrimary={() => { setSuccessPopup(false); }}
-                onSecondary={() => { setSuccessPopup(false); navigation.navigate('Home'); }}
+                onPrimary={() => {
+                    setSuccessPopup(false);
+                    // Navigate to the Orders tab inside the bottom navigator
+                    navigation.navigate('Main', {
+                        screen: 'Home',
+                        params: { screen: 'Orders' },
+                    });
+                }}
+                onSecondary={() => {
+                    setSuccessPopup(false);
+                    // Navigate to the Home tab (default tab)
+                    navigation.navigate('Main', {
+                        screen: 'Home',
+                    });
+                }}
                 onClose={() => setSuccessPopup(false)}
                 showCloseIcon={false}
                 dismissOnBackdrop={false}

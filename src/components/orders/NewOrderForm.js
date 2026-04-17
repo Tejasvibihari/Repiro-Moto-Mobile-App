@@ -1334,7 +1334,6 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
     const goPrev = useCallback(() => { animateToPrev(); setStep((s) => Math.max(s - 1, 0)); }, [animateToPrev]);
 
     const handleSavedBikeSelect = (bike, brandList) => {
-        console.log(bike, "bs selection");
         if (selectedBikeId === bike._id) {
             setSelectedBikeId(null);
             setBrand('');
@@ -1436,7 +1435,6 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
             status: 'Pending',
             referralProcessed: false,
         };
-        console.log(payload, "Payload from the new order form ")
         onSubmit(payload);
     };
 

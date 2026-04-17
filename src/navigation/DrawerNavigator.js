@@ -47,6 +47,7 @@ import SupportScreen from '../screens/support/SupportScreen';
 import SettingsScreen from '../screens/settings/SettingsScreen';
 import MyBikeScreen from '../screens/bikes/MyBikeScreen';
 import TermsConditionsScreen from '../screens/legal/TermsConditionsScreen';
+import CheckoutScreen from '../screens/payment/CheckoutScreen';
 
 const Drawer = createDrawerNavigator();
 
@@ -446,6 +447,7 @@ export default function DrawerNavigator() {
             <Drawer.Screen name="Support" component={SupportScreen} />
             <Drawer.Screen name="Settings" component={SettingsScreen} />
             <Drawer.Screen name="TermsConditions" component={TermsConditionsScreen} />
+
         </Drawer.Navigator>
     );
 }
