@@ -49,8 +49,6 @@ export default function NewOrderScreen() {
 
             <Loader visible={loading} message="Booking your service..." />
 
-           // screens/order/NewOrderScreen.js (excerpt)
-
             <PopUp
                 visible={successPopup}
                 type="success"
