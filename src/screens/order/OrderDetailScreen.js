@@ -346,7 +346,7 @@ const smc = StyleSheet.create({
 // ─── Financial Summary Card ───────────────────────────────────────────────────
 function FinancialSummaryCard({ total, coupon, paymentStatus, paymentMethod, amountPaid, paymentDate, C, isDark }) {
     if (!total) return null;
-
+    console.log("total", total);
     const {
         baseAmount = 0,
         discount = 0,
