@@ -7,6 +7,7 @@ import { usePushNotifications } from "../hooks/usePushNotifications";
 
 import LoginScreen from "../screens/auth/LoginScreen";
 import RegisterScreen from "../screens/auth/RegisterScreen";
+import ForgotPasswordScreen from "../screens/auth/ForgotPasswordScreen";
 import DrawerNavigator from "./DrawerNavigator";   // ← replaces BottomTabNavigator at root
 import AddBikeScreen from "../screens/bikes/AddBikeScreen";
 import EditBikeScreen from "../screens/bikes/EditBikeScreen";
@@ -24,6 +25,7 @@ function AuthStack() {
         <Stack.Navigator screenOptions={{ headerShown: false }}>
             <Stack.Screen name="Login" component={LoginScreen} />
             <Stack.Screen name="Register" component={RegisterScreen} />
+            <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
         </Stack.Navigator>
     );
 }

@@ -116,7 +116,7 @@ export default function LoginScreen({ navigation }) {
                     )}
 
                     <Animated.View style={{ opacity: contentOpacity, transform: [{ translateY: contentTransY }] }}>
-                        <LoginForm onSubmit={handleLogin} onForgotPassword={() => { }} loading={loading} />
+                        <LoginForm onSubmit={handleLogin} onForgotPassword={() => navigation.navigate('ForgotPassword')} loading={loading} />
                     </Animated.View>
 
                     <Animated.View style={[s.footer, { opacity: contentOpacity }]}>

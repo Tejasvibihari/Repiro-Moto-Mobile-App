@@ -33,6 +33,15 @@ const SERVICE_TYPES = [
     { id: 'other', label: 'Other', icon: 'ellipsis-horizontal-outline', color: '#9B8EA8' },
 ];
 
+const QUICK_SERVICES = [
+    { id: 'general_service', label: 'General Service', icon: 'construct-outline', color: '#4CAF8A' },
+    { id: 'oil_change', label: 'Oil Change', icon: 'water-outline', color: '#E8A838' },
+    { id: 'brake_repair', label: 'Brake Repair', icon: 'stop-circle-outline', color: '#E05454' },
+    { id: 'tyre_care', label: 'Tyre Care', icon: 'ellipse-outline', color: '#5B9BD5' },
+    { id: 'engine_tune', label: 'Engine Tune-Up', icon: 'flash-outline', color: '#E07B54' },
+    { id: 'chain_sprocket', label: 'Chain & Sprocket', icon: 'git-network-outline', color: '#7B68EE' },
+];
+
 const TIME_SLOTS = [
     { label: '8 AM', value: '08:00 AM' },
     { label: '9 AM', value: '09:00 AM' },
@@ -59,6 +68,7 @@ const STEPS = [
     { id: 'schedule', title: 'When to come?', subtitle: 'Pick a date and time slot' },
     { id: 'notes', title: 'Anything else?', subtitle: 'Optional notes for the mechanic' },
 ];
+
 const BS_STANDARDS = [
     { label: 'BS1', value: 'BS1' },
     { label: 'BS2', value: 'BS2' },
@@ -68,13 +78,41 @@ const BS_STANDARDS = [
     { label: 'BS6', value: 'BS6' },
     { label: 'BSVI', value: 'BSVI' },
 ];
-// Helper to get readable service label
-const getServiceLabel = (type) => {
-    const found = SERVICE_TYPES.find(s => s.id === type);
-    return found ? found.label.replace('\n', ' ') : type;
+
+const getServiceLabel = (id) => {
+    const found = [...SERVICE_TYPES, ...QUICK_SERVICES].find(s => s.id === id);
+    return found ? found.label.replace('\n', ' ') : id;
 };
 
-// ─── Style helper (moved here so it's available to all components) ───────────
+// ─── Helper: parse time string "HH:MM AM/PM" into minutes since midnight ─────
+const parseTimeToMinutes = (timeStr) => {
+    const [time, modifier] = timeStr.split(' ');
+    let [hours, minutes] = time.split(':').map(Number);
+    if (modifier === 'PM' && hours !== 12) hours += 12;
+    if (modifier === 'AM' && hours === 12) hours = 0;
+    return hours * 60 + minutes;
+};
+
+// ─── Check if a time slot on a given date is already passed ─────────────────
+const isTimeSlotPassed = (date, timeSlotValue) => {
+    const now = new Date();
+    const slotDate = new Date(date);
+    const minutes = parseTimeToMinutes(timeSlotValue);
+    slotDate.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0);
+    return slotDate < now;
+};
+
+// ─── Check if a time slot on a given date is within the next hour ───────────
+const isWithinNextHour = (date, timeSlotValue) => {
+    const now = new Date();
+    const slotDate = new Date(date);
+    const minutes = parseTimeToMinutes(timeSlotValue);
+    slotDate.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0);
+    const diffMs = slotDate - now;
+    return diffMs > 0 && diffMs <= 60 * 60 * 1000;
+};
+
+// ─── Style helper ─────────────────────────────────────────────────────────────
 function labelStyle(theme) {
     return { fontSize: 13, fontWeight: '700', letterSpacing: 0.5, color: theme.colors.textMuted, textTransform: 'uppercase' };
 }
@@ -132,20 +170,21 @@ function Pill({ label, selected, onPress, theme, isDark, loading }) {
 }
 
 // ─── Styled input ─────────────────────────────────────────────────────────────
-function StyledInput({ value, onChangeText, placeholder, keyboardType, multiline, numberOfLines, theme, isDark, icon, prefix }) {
+function StyledInput({ value, onChangeText, placeholder, keyboardType, multiline, numberOfLines, theme, isDark, icon, prefix, hasError }) {
     const [focused, setFocused] = useState(false);
+    const borderColor = hasError ? theme.colors.error : focused ? theme.colors.primary : theme.colors.border;
     return (
         <View style={{
             flexDirection: 'row',
             alignItems: multiline ? 'flex-start' : 'center',
             backgroundColor: isDark ? theme.colors.surfaceLow : '#FFF',
             borderWidth: 1.5,
-            borderColor: focused ? theme.colors.primary : theme.colors.border,
+            borderColor,
             borderRadius: 16, paddingHorizontal: 16,
             paddingVertical: multiline ? 14 : 0,
             minHeight: multiline ? 100 : 54,
         }}>
-            {icon && <Ionicons name={icon} size={18} color={focused ? theme.colors.primary : theme.colors.textMuted} style={{ marginRight: 10, marginTop: multiline ? 2 : 0 }} />}
+            {icon && <Ionicons name={icon} size={18} color={hasError ? theme.colors.error : focused ? theme.colors.primary : theme.colors.textMuted} style={{ marginRight: 10, marginTop: multiline ? 2 : 0 }} />}
             {prefix && <Text style={{ fontSize: 15, fontWeight: '600', color: theme.colors.textMuted, marginRight: 6 }}>{prefix}</Text>}
             <TextInput
                 value={value} onChangeText={onChangeText} placeholder={placeholder}
@@ -162,8 +201,10 @@ function StyledInput({ value, onChangeText, placeholder, keyboardType, multiline
     );
 }
 
-// ─── Service step with multi‑select + "Other" exclusive ──────────────────────
+// ─── Service step ─────────────────────────────────────────────────────────────
 function ServiceStep({ theme, isDark, selectedServices, setSelectedServices, otherServiceText, setOtherServiceText }) {
+    const ALL_SERVICE_IDS = [...SERVICE_TYPES.map(s => s.id), ...QUICK_SERVICES.map(s => s.id)];
+
     const toggleService = (serviceId) => {
         if (serviceId === 'other') {
             setSelectedServices(['other']);
@@ -181,95 +222,99 @@ function ServiceStep({ theme, isDark, selectedServices, setSelectedServices, oth
     };
 
     const isOtherSelected = selectedServices.includes('other');
-    const displayServices = SERVICE_TYPES;
 
     return (
         <View>
             <Text style={[labelStyle(theme), { marginBottom: 12 }]}>
-                What services do you need? <Text style={{ color: theme.colors.textMuted, fontWeight: 'normal' }}>(select one or more)</Text>
+                What services do you need?{'  '}
+                <Text style={{ color: theme.colors.textMuted, fontWeight: 'normal', textTransform: 'none' }}>(select one or more)</Text>
             </Text>
-            <View style={{ gap: 12 }}>
+
+            <View style={{ gap: 12, marginBottom: 20 }}>
                 <View style={{ flexDirection: 'row', gap: 12 }}>
-                    {displayServices.slice(0, 2).map((item) => (
-                        <TouchableOpacity
+                    {SERVICE_TYPES.slice(0, 2).map((item) => (
+                        <ServiceCard
                             key={item.id}
-                            activeOpacity={0.8}
-                            onPress={() => toggleService(item.id)}
-                            style={{
-                                flex: 1,
-                                borderWidth: 1.5,
-                                borderColor: selectedServices.includes(item.id) ? item.color : theme.colors.border,
-                                borderRadius: 18,
-                                padding: 18,
-                                alignItems: 'center',
-                                gap: 10,
-                                backgroundColor: selectedServices.includes(item.id)
-                                    ? item.color + (isDark ? '22' : '15')
-                                    : isDark ? theme.colors.surfaceLow : '#FFF',
-                                opacity: isOtherSelected && item.id !== 'other' ? 0.5 : 1,
-                            }}
+                            item={item}
+                            selected={selectedServices.includes(item.id)}
                             disabled={isOtherSelected && item.id !== 'other'}
-                        >
-                            <View style={{
-                                width: 44, height: 44, borderRadius: 22,
-                                backgroundColor: item.color + (selectedServices.includes(item.id) ? '25' : '15'),
-                                alignItems: 'center', justifyContent: 'center'
-                            }}>
-                                <Ionicons name={item.icon} size={22} color={selectedServices.includes(item.id) ? item.color : theme.colors.textMuted} />
-                            </View>
-                            <Text style={{
-                                fontSize: 12.5,
-                                fontWeight: selectedServices.includes(item.id) ? '800' : '600',
-                                color: selectedServices.includes(item.id) ? item.color : theme.colors.textSecondary,
-                                textAlign: 'center', lineHeight: 17
-                            }}>
-                                {item.label}
-                            </Text>
-                        </TouchableOpacity>
+                            onPress={() => toggleService(item.id)}
+                            theme={theme}
+                            isDark={isDark}
+                        />
                     ))}
                 </View>
                 <View style={{ flexDirection: 'row', gap: 12 }}>
-                    {displayServices.slice(2, 4).map((item) => (
-                        <TouchableOpacity
+                    {SERVICE_TYPES.slice(2, 4).map((item) => (
+                        <ServiceCard
                             key={item.id}
-                            activeOpacity={0.8}
-                            onPress={() => toggleService(item.id)}
-                            style={{
-                                flex: 1,
-                                borderWidth: 1.5,
-                                borderColor: selectedServices.includes(item.id) ? item.color : theme.colors.border,
-                                borderRadius: 18,
-                                padding: 18,
-                                alignItems: 'center',
-                                gap: 10,
-                                backgroundColor: selectedServices.includes(item.id)
-                                    ? item.color + (isDark ? '22' : '15')
-                                    : isDark ? theme.colors.surfaceLow : '#FFF',
-                                opacity: isOtherSelected && item.id !== 'other' ? 0.5 : 1,
-                            }}
+                            item={item}
+                            selected={selectedServices.includes(item.id)}
                             disabled={isOtherSelected && item.id !== 'other'}
-                        >
-                            <View style={{
-                                width: 44, height: 44, borderRadius: 22,
-                                backgroundColor: item.color + (selectedServices.includes(item.id) ? '25' : '15'),
-                                alignItems: 'center', justifyContent: 'center'
-                            }}>
-                                <Ionicons name={item.icon} size={22} color={selectedServices.includes(item.id) ? item.color : theme.colors.textMuted} />
-                            </View>
-                            <Text style={{
-                                fontSize: 12.5,
-                                fontWeight: selectedServices.includes(item.id) ? '800' : '600',
-                                color: selectedServices.includes(item.id) ? item.color : theme.colors.textSecondary,
-                                textAlign: 'center', lineHeight: 17
-                            }}>
-                                {item.label}
-                            </Text>
-                        </TouchableOpacity>
+                            onPress={() => toggleService(item.id)}
+                            theme={theme}
+                            isDark={isDark}
+                        />
                     ))}
                 </View>
             </View>
+
+            {!isOtherSelected && (
+                <>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+                        <View style={{ flex: 1, height: 1, backgroundColor: theme.colors.border }} />
+                        <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 0.6, color: theme.colors.textMuted, textTransform: 'uppercase' }}>
+                            Quick Pick
+                        </Text>
+                        <View style={{ flex: 1, height: 1, backgroundColor: theme.colors.border }} />
+                    </View>
+
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+                        {QUICK_SERVICES.map((item) => {
+                            const isSelected = selectedServices.includes(item.id);
+                            return (
+                                <TouchableOpacity
+                                    key={item.id}
+                                    onPress={() => toggleService(item.id)}
+                                    activeOpacity={0.8}
+                                    style={{
+                                        flexDirection: 'row',
+                                        alignItems: 'center',
+                                        gap: 7,
+                                        paddingHorizontal: 14,
+                                        paddingVertical: 9,
+                                        borderRadius: 50,
+                                        borderWidth: 1.5,
+                                        borderColor: isSelected ? item.color : theme.colors.border,
+                                        backgroundColor: isSelected
+                                            ? item.color + (isDark ? '22' : '18')
+                                            : isDark ? theme.colors.surfaceLow : '#FFF',
+                                    }}
+                                >
+                                    <Ionicons
+                                        name={item.icon}
+                                        size={14}
+                                        color={isSelected ? item.color : theme.colors.textMuted}
+                                    />
+                                    <Text style={{
+                                        fontSize: 13,
+                                        fontWeight: isSelected ? '700' : '500',
+                                        color: isSelected ? item.color : theme.colors.textSecondary,
+                                    }}>
+                                        {item.label}
+                                    </Text>
+                                    {isSelected && (
+                                        <Ionicons name="checkmark-circle" size={13} color={item.color} />
+                                    )}
+                                </TouchableOpacity>
+                            );
+                        })}
+                    </View>
+                </>
+            )}
+
             {isOtherSelected && (
-                <View style={{ marginTop: 16, padding: 16, borderRadius: 18, borderWidth: 1.5, borderColor: '#9B8EA8' + '66', backgroundColor: isDark ? theme.colors.surfaceLow : '#FAF8FF' }}>
+                <View style={{ marginTop: 4, padding: 16, borderRadius: 18, borderWidth: 1.5, borderColor: '#9B8EA8' + '66', backgroundColor: isDark ? theme.colors.surfaceLow : '#FAF8FF' }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
                         <Ionicons name="create-outline" size={16} color="#9B8EA8" />
                         <Text style={{ fontSize: 12, fontWeight: '700', letterSpacing: 0.6, color: '#9B8EA8', textTransform: 'uppercase' }}>Describe your service</Text>
@@ -289,15 +334,54 @@ function ServiceStep({ theme, isDark, selectedServices, setSelectedServices, oth
     );
 }
 
-// ─── Date row ─────────────────────────────────────────────────────────────────
+function ServiceCard({ item, selected, disabled, onPress, theme, isDark }) {
+    return (
+        <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={onPress}
+            disabled={disabled}
+            style={{
+                flex: 1,
+                borderWidth: 1.5,
+                borderColor: selected ? item.color : theme.colors.border,
+                borderRadius: 18,
+                padding: 18,
+                alignItems: 'center',
+                gap: 10,
+                backgroundColor: selected
+                    ? item.color + (isDark ? '22' : '15')
+                    : isDark ? theme.colors.surfaceLow : '#FFF',
+                opacity: disabled ? 0.5 : 1,
+            }}
+        >
+            <View style={{
+                width: 44, height: 44, borderRadius: 22,
+                backgroundColor: item.color + (selected ? '25' : '15'),
+                alignItems: 'center', justifyContent: 'center'
+            }}>
+                <Ionicons name={item.icon} size={22} color={selected ? item.color : theme.colors.textMuted} />
+            </View>
+            <Text style={{
+                fontSize: 12.5,
+                fontWeight: selected ? '800' : '600',
+                color: selected ? item.color : theme.colors.textSecondary,
+                textAlign: 'center', lineHeight: 17
+            }}>
+                {item.label}
+            </Text>
+        </TouchableOpacity>
+    );
+}
+
+// ─── Date row (unchanged) ────────────────────────────────────────────────────
 function DateRow({ selectedDate, onSelect, theme, isDark }) {
     const today = new Date();
     const CARD_WIDTH = 56;
     const CARD_GAP = 8;
 
-    const days = Array.from({ length: 30 }, (_, i) => {
+    const days = Array.from({ length: 31 }, (_, i) => {
         const d = new Date(today);
-        d.setDate(today.getDate() + i + 1);
+        d.setDate(today.getDate() + i);
         return d;
     });
 
@@ -311,6 +395,8 @@ function DateRow({ selectedDate, onSelect, theme, isDark }) {
             last.days.push(d);
         }
     });
+
+    const todayStr = today.toDateString();
 
     return (
         <ScrollView
@@ -327,16 +413,10 @@ function DateRow({ selectedDate, onSelect, theme, isDark }) {
                         marginBottom: 10,
                         paddingLeft: 4,
                     }}>
-                        <View style={{
-                            width: 5, height: 5, borderRadius: 3,
-                            backgroundColor: theme.colors.primary,
-                        }} />
+                        <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: theme.colors.primary }} />
                         <Text style={{
-                            fontSize: 10,
-                            fontWeight: '800',
-                            color: theme.colors.primary,
-                            letterSpacing: 1,
-                            textTransform: 'uppercase',
+                            fontSize: 10, fontWeight: '800', color: theme.colors.primary,
+                            letterSpacing: 1, textTransform: 'uppercase',
                         }}>
                             {MONTH_LABELS[group.month]} {group.year}
                         </Text>
@@ -345,7 +425,9 @@ function DateRow({ selectedDate, onSelect, theme, isDark }) {
                         {group.days.map((d) => {
                             const key = d.toDateString();
                             const isSelected = selectedDate === key;
+                            const isToday = key === todayStr;
                             const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+
                             return (
                                 <TouchableOpacity
                                     key={key}
@@ -355,12 +437,14 @@ function DateRow({ selectedDate, onSelect, theme, isDark }) {
                                         width: CARD_WIDTH,
                                         paddingVertical: 12,
                                         borderRadius: 16,
-                                        borderWidth: 1.5,
+                                        borderWidth: isToday && !isSelected ? 2 : 1.5,
                                         borderColor: isSelected
                                             ? theme.colors.primary
-                                            : isWeekend
-                                                ? theme.colors.warning + '55'
-                                                : theme.colors.border,
+                                            : isToday
+                                                ? theme.colors.primary + '88'
+                                                : isWeekend
+                                                    ? theme.colors.warning + '55'
+                                                    : theme.colors.border,
                                         backgroundColor: isSelected
                                             ? theme.colors.primary
                                             : isDark ? theme.colors.surfaceLow : '#FFF',
@@ -368,27 +452,38 @@ function DateRow({ selectedDate, onSelect, theme, isDark }) {
                                         gap: 4,
                                     }}
                                 >
+                                    {isToday ? (
+                                        <View style={{
+                                            paddingHorizontal: 6, paddingVertical: 1.5, borderRadius: 6,
+                                            backgroundColor: isSelected ? '#1a1a1a18' : theme.colors.primary + '22',
+                                        }}>
+                                            <Text style={{
+                                                fontSize: 8, fontWeight: '900', letterSpacing: 0.4,
+                                                textTransform: 'uppercase',
+                                                color: isSelected ? '#1a1a1a' : theme.colors.primary,
+                                            }}>
+                                                Today
+                                            </Text>
+                                        </View>
+                                    ) : (
+                                        <Text style={{
+                                            fontSize: 9, fontWeight: '700', letterSpacing: 0.6,
+                                            textTransform: 'uppercase',
+                                            color: isSelected ? '#1a1a1a' : isWeekend ? theme.colors.warning : theme.colors.textMuted,
+                                        }}>
+                                            {DAY_LABELS[d.getDay()]}
+                                        </Text>
+                                    )}
+
                                     <Text style={{
-                                        fontSize: 9,
-                                        fontWeight: '700',
-                                        letterSpacing: 0.6,
-                                        textTransform: 'uppercase',
-                                        color: isSelected ? '#1a1a1a' : isWeekend ? theme.colors.warning : theme.colors.textMuted,
-                                    }}>
-                                        {DAY_LABELS[d.getDay()]}
-                                    </Text>
-                                    <Text style={{
-                                        fontSize: 20,
-                                        fontWeight: '900',
-                                        lineHeight: 24,
-                                        color: isSelected ? '#1a1a1a' : theme.colors.textPrimary,
+                                        fontSize: 20, fontWeight: '900', lineHeight: 24,
+                                        color: isSelected ? '#1a1a1a' : isToday ? theme.colors.primary : theme.colors.textPrimary,
                                     }}>
                                         {d.getDate()}
                                     </Text>
+
                                     <View style={{
-                                        paddingHorizontal: 6,
-                                        paddingVertical: 2,
-                                        borderRadius: 6,
+                                        paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6,
                                         backgroundColor: isSelected
                                             ? '#1a1a1a18'
                                             : isWeekend
@@ -396,9 +491,7 @@ function DateRow({ selectedDate, onSelect, theme, isDark }) {
                                                 : theme.colors.border + '80',
                                     }}>
                                         <Text style={{
-                                            fontSize: 9,
-                                            fontWeight: '700',
-                                            letterSpacing: 0.3,
+                                            fontSize: 9, fontWeight: '700', letterSpacing: 0.3,
                                             color: isSelected ? '#1a1a1a99' : isWeekend ? theme.colors.warning : theme.colors.textMuted,
                                         }}>
                                             {MONTH_LABELS[d.getMonth()]}
@@ -434,36 +527,21 @@ function SavedBikeCard({ bike, selected, onPress, theme, isDark }) {
     );
 }
 
-// ─── Location step with city & distance callbacks ────────────────────────────
-
+// ─── Location step (unchanged) ────────────────────────────────────────────────
 function LocationStep({
-    theme,
-    isDark,
-    locationText,
-    setLocationText,
-    setCoords,
-    isServiceable,
-    setIsServiceable,
-    onCityChange,
-    onDistanceChange,
-    onNext,
+    theme, isDark, locationText, setLocationText, setCoords,
+    isServiceable, setIsServiceable, onCityChange, onDistanceChange, onNext,
 }) {
     const [loading, setLoading] = useState(false);
     const [checking, setChecking] = useState(false);
     const [alert, setAlert] = useState(null);
     const [mapVisible, setMapVisible] = useState(false);
-    const [locationUnavailable, setLocationUnavailable] = useState(false); // NEW
-    const [showManualSearch, setShowManualSearch] = useState(false);       // NEW
-    const [manualQuery, setManualQuery] = useState('');                    // NEW
-    const [manualResults, setManualResults] = useState([]);                // NEW
-    const [manualSearchLoading, setManualSearchLoading] = useState(false); // NEW
-
-    const [mapRegion, setMapRegion] = useState({
-        latitude: 25.5941,
-        longitude: 85.1376,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
-    });
+    const [locationUnavailable, setLocationUnavailable] = useState(false);
+    const [showManualSearch, setShowManualSearch] = useState(false);
+    const [manualQuery, setManualQuery] = useState('');
+    const [manualResults, setManualResults] = useState([]);
+    const [manualSearchLoading, setManualSearchLoading] = useState(false);
+    const [mapRegion, setMapRegion] = useState({ latitude: 25.5941, longitude: 85.1376, latitudeDelta: 0.01, longitudeDelta: 0.01 });
     const [pinCoords, setPinCoords] = useState(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [searchResults, setSearchResults] = useState([]);
@@ -488,9 +566,7 @@ function LocationStep({
             if (geo.length > 0 && geo[0].city) onCityChange(geo[0].city);
             else if (geo.length > 0 && geo[0].region) onCityChange(geo[0].region);
             else onCityChange('');
-        } catch {
-            onCityChange('');
-        }
+        } catch { onCityChange(''); }
     };
 
     const checkArea = async (lat, lng) => {
@@ -504,9 +580,7 @@ function LocationStep({
         } catch {
             setIsServiceable(false);
             setAlert({ type: 'error', message: 'Could not verify serviceability.' });
-        } finally {
-            setChecking(false);
-        }
+        } finally { setChecking(false); }
     };
 
     const autoDetect = async () => {
@@ -515,11 +589,7 @@ function LocationStep({
         setLocationUnavailable(false);
         try {
             const { status } = await Location.requestForegroundPermissionsAsync();
-            if (status !== 'granted') {
-                setLocationUnavailable(true);
-                setLoading(false);
-                return;
-            }
+            if (status !== 'granted') { setLocationUnavailable(true); setLoading(false); return; }
             const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
             const { latitude, longitude } = loc.coords;
             setCoords({ latitude, longitude });
@@ -536,12 +606,9 @@ function LocationStep({
         } catch {
             setLocationUnavailable(true);
             setAlert({ type: 'error', message: 'Could not detect location. Please enter it manually.' });
-        } finally {
-            setLoading(false);
-        }
+        } finally { setLoading(false); }
     };
 
-    // ── Manual search ─────────────────────────────────────────────────────────
     const handleManualQueryChange = (text) => {
         setManualQuery(text);
         if (manualSearchTimeout.current) clearTimeout(manualSearchTimeout.current);
@@ -550,28 +617,20 @@ function LocationStep({
             setManualSearchLoading(true);
             try {
                 const results = await Location.geocodeAsync(text);
-                const named = await Promise.all(
-                    results.slice(0, 5).map(async (r) => {
-                        const rev = await Location.reverseGeocodeAsync({ latitude: r.latitude, longitude: r.longitude });
-                        const g = rev[0] || {};
-                        const label = [g.name, g.streetNumber, g.street, g.district, g.subregion, g.city, g.region, g.postalCode].filter(Boolean).join(', ');
-                        return { label, latitude: r.latitude, longitude: r.longitude };
-                    })
-                );
+                const named = await Promise.all(results.slice(0, 5).map(async (r) => {
+                    const rev = await Location.reverseGeocodeAsync({ latitude: r.latitude, longitude: r.longitude });
+                    const g = rev[0] || {};
+                    const label = [g.name, g.streetNumber, g.street, g.district, g.subregion, g.city, g.region, g.postalCode].filter(Boolean).join(', ');
+                    return { label, latitude: r.latitude, longitude: r.longitude };
+                }));
                 setManualResults(named);
-            } catch {
-                setManualResults([]);
-            } finally {
-                setManualSearchLoading(false);
-            }
+            } catch { setManualResults([]); }
+            finally { setManualSearchLoading(false); }
         }, 600);
     };
 
     const handleManualSelect = async (result) => {
-        setManualQuery('');
-        setManualResults([]);
-        setShowManualSearch(false);
-        setLocationUnavailable(false);
+        setManualQuery(''); setManualResults([]); setShowManualSearch(false); setLocationUnavailable(false);
         setCoords({ latitude: result.latitude, longitude: result.longitude });
         setPinCoords({ latitude: result.latitude, longitude: result.longitude });
         setMapRegion({ latitude: result.latitude, longitude: result.longitude, latitudeDelta: 0.01, longitudeDelta: 0.01 });
@@ -580,7 +639,6 @@ function LocationStep({
         await checkArea(result.latitude, result.longitude);
     };
 
-    // ── In-map search (existing) ──────────────────────────────────────────────
     const handleSearchChange = (text) => {
         setSearchQuery(text);
         if (searchTimeout.current) clearTimeout(searchTimeout.current);
@@ -589,26 +647,20 @@ function LocationStep({
             setSearchLoading(true);
             try {
                 const results = await Location.geocodeAsync(text);
-                const named = await Promise.all(
-                    results.slice(0, 5).map(async (r) => {
-                        const rev = await Location.reverseGeocodeAsync({ latitude: r.latitude, longitude: r.longitude });
-                        const g = rev[0] || {};
-                        const label = [g.name, g.streetNumber, g.street, g.district, g.subregion, g.city, g.region, g.postalCode].filter(Boolean).join(', ');
-                        return { label, latitude: r.latitude, longitude: r.longitude };
-                    })
-                );
+                const named = await Promise.all(results.slice(0, 5).map(async (r) => {
+                    const rev = await Location.reverseGeocodeAsync({ latitude: r.latitude, longitude: r.longitude });
+                    const g = rev[0] || {};
+                    const label = [g.name, g.streetNumber, g.street, g.district, g.subregion, g.city, g.region, g.postalCode].filter(Boolean).join(', ');
+                    return { label, latitude: r.latitude, longitude: r.longitude };
+                }));
                 setSearchResults(named);
-            } catch {
-                setSearchResults([]);
-            } finally {
-                setSearchLoading(false);
-            }
+            } catch { setSearchResults([]); }
+            finally { setSearchLoading(false); }
         }, 600);
     };
 
     const handleSearchSelect = (result) => {
-        setSearchQuery('');
-        setSearchResults([]);
+        setSearchQuery(''); setSearchResults([]);
         setPinCoords({ latitude: result.latitude, longitude: result.longitude });
         setMapRegion({ latitude: result.latitude, longitude: result.longitude, latitudeDelta: 0.01, longitudeDelta: 0.01 });
         setLocationText(result.label);
@@ -642,106 +694,42 @@ function LocationStep({
         setSearchQuery('');
     };
 
-    const handleCloseMap = () => {
-        setMapVisible(false);
-        setSearchResults([]);
-        setSearchQuery('');
-    };
+    const handleCloseMap = () => { setMapVisible(false); setSearchResults([]); setSearchQuery(''); };
 
-    const statusColor =
-        isServiceable === true ? theme.colors.success :
-            isServiceable === false ? theme.colors.error :
-                theme.colors.primary;
-    const statusIcon =
-        isServiceable === true ? 'checkmark-circle' :
-            isServiceable === false ? 'close-circle' :
-                'location';
+    const statusColor = isServiceable === true ? theme.colors.success : isServiceable === false ? theme.colors.error : theme.colors.primary;
+    const statusIcon = isServiceable === true ? 'checkmark-circle' : isServiceable === false ? 'close-circle' : 'location';
 
-    // ────────────────────────────────────────────────────────────────────────
     return (
         <View>
-            {alert && (
-                <Alert
-                    type={alert.type}
-                    message={alert.message}
-                    visible
-                    onDismiss={() => setAlert(null)}
-                    autoDismiss={4000}
-                    style={{ marginBottom: 14 }}
-                />
-            )}
+            {alert && <Alert type={alert.type} message={alert.message} visible onDismiss={() => setAlert(null)} autoDismiss={4000} style={{ marginBottom: 14 }} />}
 
-            {/* ── Location status card ───────────────────────────── */}
-            <View style={{
-                borderRadius: 20,
-                overflow: 'hidden',
-                borderWidth: 1.5,
-                borderColor:
-                    locationUnavailable ? theme.colors.warning + '55' :
-                        isServiceable === true ? theme.colors.success + '55' :
-                            isServiceable === false ? theme.colors.error + '55' :
-                                theme.colors.border,
-                backgroundColor: isDark ? theme.colors.surfaceLow : '#FFF',
-                marginBottom: 16,
-            }}>
-                <View style={{
-                    height: 4,
-                    backgroundColor:
-                        locationUnavailable ? theme.colors.warning :
-                            statusColor + (isServiceable === null ? '60' : 'CC'),
-                }} />
+            <View style={{ borderRadius: 20, overflow: 'hidden', borderWidth: 1.5, borderColor: locationUnavailable ? theme.colors.warning + '55' : isServiceable === true ? theme.colors.success + '55' : isServiceable === false ? theme.colors.error + '55' : theme.colors.border, backgroundColor: isDark ? theme.colors.surfaceLow : '#FFF', marginBottom: 16 }}>
+                <View style={{ height: 4, backgroundColor: locationUnavailable ? theme.colors.warning : statusColor + (isServiceable === null ? '60' : 'CC') }} />
                 <View style={{ padding: 18, flexDirection: 'row', alignItems: 'center', gap: 14 }}>
                     {loading ? (
-                        <>
-                            <ActivityIndicator size="small" color={theme.colors.primary} />
-                            <View style={{ flex: 1 }}>
-                                <Text style={{ fontSize: 14, color: theme.colors.textMuted, fontWeight: '500' }}>
-                                    Detecting your location…
-                                </Text>
-                            </View>
-                        </>
+                        <><ActivityIndicator size="small" color={theme.colors.primary} /><View style={{ flex: 1 }}><Text style={{ fontSize: 14, color: theme.colors.textMuted, fontWeight: '500' }}>Detecting your location…</Text></View></>
                     ) : locationUnavailable ? (
-                        /* ── Location unavailable state ── */
                         <>
-                            <View style={{
-                                width: 44, height: 44, borderRadius: 22,
-                                backgroundColor: theme.colors.warning + '20',
-                                alignItems: 'center', justifyContent: 'center',
-                            }}>
+                            <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: theme.colors.warning + '20', alignItems: 'center', justifyContent: 'center' }}>
                                 <Ionicons name="location-outline" size={24} color={theme.colors.warning} />
                             </View>
                             <View style={{ flex: 1 }}>
-                                <Text style={{ fontSize: 14, fontWeight: '700', color: theme.colors.textPrimary, lineHeight: 20 }}>
-                                    Location unavailable
-                                </Text>
-                                <Text style={{ fontSize: 12, color: theme.colors.textMuted, fontWeight: '500', marginTop: 3 }}>
-                                    Permission denied or GPS off
-                                </Text>
+                                <Text style={{ fontSize: 14, fontWeight: '700', color: theme.colors.textPrimary, lineHeight: 20 }}>Location unavailable</Text>
+                                <Text style={{ fontSize: 12, color: theme.colors.textMuted, fontWeight: '500', marginTop: 3 }}>Permission denied or GPS off</Text>
                             </View>
                             <TouchableOpacity onPress={autoDetect} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                                 <Ionicons name="refresh" size={20} color={theme.colors.primary} />
                             </TouchableOpacity>
                         </>
                     ) : (
-                        /* ── Normal detected state ── */
                         <>
-                            <View style={{
-                                width: 44, height: 44, borderRadius: 22,
-                                backgroundColor: statusColor + '20',
-                                alignItems: 'center', justifyContent: 'center',
-                            }}>
+                            <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: statusColor + '20', alignItems: 'center', justifyContent: 'center' }}>
                                 <Ionicons name={statusIcon} size={24} color={statusColor} />
                             </View>
                             <View style={{ flex: 1 }}>
-                                <Text style={{ fontSize: 14, fontWeight: '700', color: theme.colors.textPrimary, lineHeight: 20 }} numberOfLines={2}>
-                                    {locationText || 'No location detected'}
-                                </Text>
-                                {isServiceable === true && (
-                                    <Text style={{ fontSize: 12, color: theme.colors.success, fontWeight: '700', marginTop: 3 }}>✓ Area is serviceable</Text>
-                                )}
-                                {isServiceable === false && (
-                                    <Text style={{ fontSize: 12, color: theme.colors.error, fontWeight: '700', marginTop: 3 }}>✗ Not serviceable yet</Text>
-                                )}
+                                <Text style={{ fontSize: 14, fontWeight: '700', color: theme.colors.textPrimary, lineHeight: 20 }} numberOfLines={2}>{locationText || 'No location detected'}</Text>
+                                {isServiceable === true && <Text style={{ fontSize: 12, color: theme.colors.success, fontWeight: '700', marginTop: 3 }}>✓ Area is serviceable</Text>}
+                                {isServiceable === false && <Text style={{ fontSize: 12, color: theme.colors.error, fontWeight: '700', marginTop: 3 }}>✗ Not serviceable yet</Text>}
                             </View>
                             <TouchableOpacity onPress={autoDetect} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                                 <Ionicons name="refresh" size={20} color={theme.colors.primary} />
@@ -751,369 +739,140 @@ function LocationStep({
                 </View>
             </View>
 
-            {/* ── Fallback CTAs — shown when location is unavailable ─ */}
             {locationUnavailable && (
                 <View style={{ gap: 10, marginBottom: 20 }}>
-                    {/* Divider with label */}
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 4 }}>
                         <View style={{ flex: 1, height: 1, backgroundColor: theme.colors.border }} />
-                        <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 0.6, color: theme.colors.textMuted, textTransform: 'uppercase' }}>
-                            Select location manually
-                        </Text>
+                        <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 0.6, color: theme.colors.textMuted, textTransform: 'uppercase' }}>Select location manually</Text>
                         <View style={{ flex: 1, height: 1, backgroundColor: theme.colors.border }} />
                     </View>
-
-                    {/* Option A: Type to search */}
-                    <TouchableOpacity
-                        onPress={() => { setShowManualSearch(true); }}
-                        activeOpacity={0.8}
-                        style={{
-                            flexDirection: 'row', alignItems: 'center', gap: 12,
-                            borderWidth: 1.5, borderColor: theme.colors.primary,
-                            borderRadius: 16, paddingVertical: 15, paddingHorizontal: 18,
-                            backgroundColor: theme.colors.primary + (isDark ? '18' : '0D'),
-                        }}
-                    >
-                        <View style={{
-                            width: 38, height: 38, borderRadius: 19,
-                            backgroundColor: theme.colors.primary + '25',
-                            alignItems: 'center', justifyContent: 'center',
-                        }}>
+                    <TouchableOpacity onPress={() => setShowManualSearch(true)} activeOpacity={0.8} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1.5, borderColor: theme.colors.primary, borderRadius: 16, paddingVertical: 15, paddingHorizontal: 18, backgroundColor: theme.colors.primary + (isDark ? '18' : '0D') }}>
+                        <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: theme.colors.primary + '25', alignItems: 'center', justifyContent: 'center' }}>
                             <Ionicons name="search-outline" size={18} color={theme.colors.primary} />
                         </View>
                         <View style={{ flex: 1 }}>
-                            <Text style={{ fontSize: 14, fontWeight: '700', color: theme.colors.primary }}>
-                                Search by name
-                            </Text>
-                            <Text style={{ fontSize: 12, color: theme.colors.textMuted, fontWeight: '500', marginTop: 2 }}>
-                                Type area, street or landmark
-                            </Text>
+                            <Text style={{ fontSize: 14, fontWeight: '700', color: theme.colors.primary }}>Search by name</Text>
+                            <Text style={{ fontSize: 12, color: theme.colors.textMuted, fontWeight: '500', marginTop: 2 }}>Type area, street or landmark</Text>
                         </View>
                         <Ionicons name="chevron-forward" size={16} color={theme.colors.primary} />
                     </TouchableOpacity>
-
-                    {/* Option B: Pick on map */}
-                    <TouchableOpacity
-                        onPress={() => setMapVisible(true)}
-                        activeOpacity={0.8}
-                        style={{
-                            flexDirection: 'row', alignItems: 'center', gap: 12,
-                            borderWidth: 1.5, borderColor: theme.colors.border,
-                            borderRadius: 16, paddingVertical: 15, paddingHorizontal: 18,
-                            backgroundColor: isDark ? theme.colors.surfaceLow : '#FFF',
-                        }}
-                    >
-                        <View style={{
-                            width: 38, height: 38, borderRadius: 19,
-                            backgroundColor: theme.colors.border + '88',
-                            alignItems: 'center', justifyContent: 'center',
-                        }}>
+                    <TouchableOpacity onPress={() => setMapVisible(true)} activeOpacity={0.8} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, borderWidth: 1.5, borderColor: theme.colors.border, borderRadius: 16, paddingVertical: 15, paddingHorizontal: 18, backgroundColor: isDark ? theme.colors.surfaceLow : '#FFF' }}>
+                        <View style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: theme.colors.border + '88', alignItems: 'center', justifyContent: 'center' }}>
                             <Ionicons name="map-outline" size={18} color={theme.colors.textSecondary} />
                         </View>
                         <View style={{ flex: 1 }}>
-                            <Text style={{ fontSize: 14, fontWeight: '700', color: theme.colors.textPrimary }}>
-                                Choose on Map
-                            </Text>
-                            <Text style={{ fontSize: 12, color: theme.colors.textMuted, fontWeight: '500', marginTop: 2 }}>
-                                Drag and pin your exact spot
-                            </Text>
+                            <Text style={{ fontSize: 14, fontWeight: '700', color: theme.colors.textPrimary }}>Choose on Map</Text>
+                            <Text style={{ fontSize: 12, color: theme.colors.textMuted, fontWeight: '500', marginTop: 2 }}>Drag and pin your exact spot</Text>
                         </View>
                         <Ionicons name="chevron-forward" size={16} color={theme.colors.textMuted} />
                     </TouchableOpacity>
                 </View>
             )}
 
-            {/* ── Manual search panel (inline, shown on demand) ───── */}
             {showManualSearch && (
-                <View style={{
-                    borderRadius: 20, borderWidth: 1.5,
-                    borderColor: theme.colors.primary + '44',
-                    backgroundColor: isDark ? theme.colors.surfaceLow : '#FFF',
-                    marginBottom: 16, overflow: 'hidden',
-                }}>
-                    {/* Header */}
-                    <View style={{
-                        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-                        paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10,
-                        borderBottomWidth: 1, borderBottomColor: theme.colors.border,
-                    }}>
-                        <Text style={{ fontSize: 13, fontWeight: '800', color: theme.colors.textPrimary, letterSpacing: 0.2 }}>
-                            Search Location
-                        </Text>
-                        <TouchableOpacity
-                            onPress={() => { setShowManualSearch(false); setManualQuery(''); setManualResults([]); }}
-                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                        >
+                <View style={{ borderRadius: 20, borderWidth: 1.5, borderColor: theme.colors.primary + '44', backgroundColor: isDark ? theme.colors.surfaceLow : '#FFF', marginBottom: 16, overflow: 'hidden' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 14, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: theme.colors.border }}>
+                        <Text style={{ fontSize: 13, fontWeight: '800', color: theme.colors.textPrimary, letterSpacing: 0.2 }}>Search Location</Text>
+                        <TouchableOpacity onPress={() => { setShowManualSearch(false); setManualQuery(''); setManualResults([]); }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
                             <Ionicons name="close" size={18} color={theme.colors.textMuted} />
                         </TouchableOpacity>
                     </View>
-
-                    {/* Search input */}
-                    <View style={{
-                        flexDirection: 'row', alignItems: 'center', gap: 8,
-                        paddingHorizontal: 14, paddingVertical: 12,
-                        borderBottomWidth: manualResults.length > 0 ? 1 : 0,
-                        borderBottomColor: theme.colors.border,
-                    }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: manualResults.length > 0 ? 1 : 0, borderBottomColor: theme.colors.border }}>
                         <Ionicons name="search" size={16} color={theme.colors.textMuted} />
-                        <TextInput
-                            value={manualQuery}
-                            onChangeText={handleManualQueryChange}
-                            placeholder="Type area, street or landmark…"
-                            placeholderTextColor={theme.colors.textMuted}
-                            autoFocus
-                            style={{
-                                flex: 1, fontSize: 14, color: theme.colors.textPrimary,
-                                fontWeight: '500', paddingVertical: Platform.OS === 'ios' ? 4 : 0,
-                            }}
-                        />
+                        <TextInput value={manualQuery} onChangeText={handleManualQueryChange} placeholder="Type area, street or landmark…" placeholderTextColor={theme.colors.textMuted} autoFocus style={{ flex: 1, fontSize: 14, color: theme.colors.textPrimary, fontWeight: '500', paddingVertical: Platform.OS === 'ios' ? 4 : 0 }} />
                         {manualSearchLoading && <ActivityIndicator size="small" color={theme.colors.primary} />}
-                        {manualQuery.length > 0 && !manualSearchLoading && (
-                            <TouchableOpacity onPress={() => { setManualQuery(''); setManualResults([]); }}>
-                                <Ionicons name="close-circle" size={16} color={theme.colors.textMuted} />
-                            </TouchableOpacity>
-                        )}
+                        {manualQuery.length > 0 && !manualSearchLoading && <TouchableOpacity onPress={() => { setManualQuery(''); setManualResults([]); }}><Ionicons name="close-circle" size={16} color={theme.colors.textMuted} /></TouchableOpacity>}
                     </View>
-
-                    {/* Results */}
                     {manualResults.length > 0 && (
                         <View>
                             {manualResults.map((r, i) => (
-                                <TouchableOpacity
-                                    key={i}
-                                    onPress={() => handleManualSelect(r)}
-                                    activeOpacity={0.75}
-                                    style={{
-                                        flexDirection: 'row', alignItems: 'center', gap: 10,
-                                        paddingHorizontal: 14, paddingVertical: 13,
-                                        borderBottomWidth: i < manualResults.length - 1 ? 1 : 0,
-                                        borderBottomColor: theme.colors.border,
-                                    }}
-                                >
-                                    <View style={{
-                                        width: 32, height: 32, borderRadius: 16,
-                                        backgroundColor: theme.colors.primary + '18',
-                                        alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                                    }}>
+                                <TouchableOpacity key={i} onPress={() => handleManualSelect(r)} activeOpacity={0.75} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 13, borderBottomWidth: i < manualResults.length - 1 ? 1 : 0, borderBottomColor: theme.colors.border }}>
+                                    <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: theme.colors.primary + '18', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                                         <Ionicons name="location-outline" size={15} color={theme.colors.primary} />
                                     </View>
-                                    <Text style={{ flex: 1, fontSize: 13, color: theme.colors.textPrimary, fontWeight: '500', lineHeight: 18 }} numberOfLines={2}>
-                                        {r.label}
-                                    </Text>
+                                    <Text style={{ flex: 1, fontSize: 13, color: theme.colors.textPrimary, fontWeight: '500', lineHeight: 18 }} numberOfLines={2}>{r.label}</Text>
                                     <Ionicons name="chevron-forward" size={14} color={theme.colors.textMuted} />
                                 </TouchableOpacity>
                             ))}
                         </View>
                     )}
-
-                    {/* Empty state */}
                     {manualQuery.length > 2 && manualResults.length === 0 && !manualSearchLoading && (
                         <View style={{ alignItems: 'center', paddingVertical: 20, gap: 6 }}>
                             <Ionicons name="search-outline" size={28} color={theme.colors.textMuted} />
-                            <Text style={{ fontSize: 13, color: theme.colors.textMuted, fontWeight: '500' }}>
-                                No results found
-                            </Text>
-                            <Text style={{ fontSize: 12, color: theme.colors.textMuted }}>
-                                Try a different area or landmark
-                            </Text>
+                            <Text style={{ fontSize: 13, color: theme.colors.textMuted, fontWeight: '500' }}>No results found</Text>
+                            <Text style={{ fontSize: 12, color: theme.colors.textMuted }}>Try a different area or landmark</Text>
                         </View>
                     )}
                 </View>
             )}
 
-            {/* ── "Change on Map" button — shown when location IS detected ─ */}
             {!locationUnavailable && (
-                <TouchableOpacity
-                    onPress={() => setMapVisible(true)}
-                    activeOpacity={0.8}
-                    style={{
-                        flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-                        borderWidth: 1.5, borderColor: theme.colors.primary,
-                        borderRadius: 16, paddingVertical: 14, marginBottom: 24,
-                        backgroundColor: theme.colors.primary + (isDark ? '18' : '0D'),
-                    }}
-                >
+                <TouchableOpacity onPress={() => setMapVisible(true)} activeOpacity={0.8} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1.5, borderColor: theme.colors.primary, borderRadius: 16, paddingVertical: 14, marginBottom: 24, backgroundColor: theme.colors.primary + (isDark ? '18' : '0D') }}>
                     <Ionicons name="map-outline" size={18} color={theme.colors.primary} />
-                    <Text style={{ fontSize: 14, fontWeight: '700', color: theme.colors.primary }}>
-                        {locationText ? 'Change on Map' : 'Select on Map'}
-                    </Text>
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: theme.colors.primary }}>{locationText ? 'Change on Map' : 'Select on Map'}</Text>
                 </TouchableOpacity>
             )}
 
-            {/* ── Confirm button ─────────────────────────────────────── */}
             {!locationUnavailable && (
-                <TouchableOpacity
-                    onPress={onNext}
-                    disabled={!isServiceable}
-                    activeOpacity={0.85}
-                    style={{
-                        flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
-                        backgroundColor: theme.colors.primary,
-                        paddingVertical: 17, borderRadius: 18,
-                        opacity: isServiceable ? 1 : 0.35,
-                    }}
-                >
+                <TouchableOpacity onPress={onNext} disabled={!isServiceable} activeOpacity={0.85} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: theme.colors.primary, paddingVertical: 17, borderRadius: 18, opacity: isServiceable ? 1 : 0.35 }}>
                     <Text style={{ fontSize: 15, fontWeight: '800', color: '#1a1a1a' }}>Confirm Location</Text>
                     <Ionicons name="arrow-forward" size={18} color="#1a1a1a" />
                 </TouchableOpacity>
             )}
 
-            {/* ── Map Modal (unchanged from original) ────────────────── */}
-            <Modal
-                visible={mapVisible}
-                animationType="slide"
-                presentationStyle="fullScreen"
-                onRequestClose={handleCloseMap}
-                statusBarTranslucent
-            >
+            <Modal visible={mapVisible} animationType="slide" presentationStyle="fullScreen" onRequestClose={handleCloseMap} statusBarTranslucent>
                 <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} backgroundColor="transparent" translucent />
                 <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-                    {/* Map header */}
-                    <View style={{
-                        paddingTop: Platform.OS === 'ios' ? 54 : (StatusBar.currentHeight || 0) + 12,
-                        paddingHorizontal: 16, paddingBottom: 12,
-                        backgroundColor: isDark ? theme.colors.surfaceLow : '#FFF',
-                        borderBottomWidth: 1, borderBottomColor: theme.colors.border, zIndex: 10,
-                    }}>
+                    <View style={{ paddingTop: Platform.OS === 'ios' ? 54 : (StatusBar.currentHeight || 0) + 12, paddingHorizontal: 16, paddingBottom: 12, backgroundColor: isDark ? theme.colors.surfaceLow : '#FFF', borderBottomWidth: 1, borderBottomColor: theme.colors.border, zIndex: 10 }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-                            <TouchableOpacity onPress={handleCloseMap} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                                <Ionicons name="arrow-back" size={22} color={theme.colors.textPrimary} />
-                            </TouchableOpacity>
+                            <TouchableOpacity onPress={handleCloseMap} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}><Ionicons name="arrow-back" size={22} color={theme.colors.textPrimary} /></TouchableOpacity>
                             <Text style={{ fontSize: 16, fontWeight: '800', color: theme.colors.textPrimary }}>Select Location</Text>
                         </View>
-                        <View style={{
-                            flexDirection: 'row', alignItems: 'center',
-                            backgroundColor: isDark ? theme.colors.surfaceHigh : theme.colors.background,
-                            borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10,
-                            borderWidth: 1.5, borderColor: theme.colors.border, gap: 8,
-                        }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? theme.colors.surfaceHigh : theme.colors.background, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1.5, borderColor: theme.colors.border, gap: 8 }}>
                             <Ionicons name="search" size={16} color={theme.colors.textMuted} />
-                            <TextInput
-                                value={searchQuery}
-                                onChangeText={handleSearchChange}
-                                placeholder="Search area, street, landmark…"
-                                placeholderTextColor={theme.colors.textMuted}
-                                style={{ flex: 1, fontSize: 14, color: theme.colors.textPrimary, fontWeight: '500' }}
-                                autoCorrect={false}
-                                returnKeyType="search"
-                            />
+                            <TextInput value={searchQuery} onChangeText={handleSearchChange} placeholder="Search area, street, landmark…" placeholderTextColor={theme.colors.textMuted} style={{ flex: 1, fontSize: 14, color: theme.colors.textPrimary, fontWeight: '500' }} autoCorrect={false} returnKeyType="search" />
                             {searchLoading && <ActivityIndicator size="small" color={theme.colors.primary} />}
-                            {searchQuery.length > 0 && !searchLoading && (
-                                <TouchableOpacity onPress={() => { setSearchQuery(''); setSearchResults([]); }}>
-                                    <Ionicons name="close-circle" size={16} color={theme.colors.textMuted} />
-                                </TouchableOpacity>
-                            )}
+                            {searchQuery.length > 0 && !searchLoading && <TouchableOpacity onPress={() => { setSearchQuery(''); setSearchResults([]); }}><Ionicons name="close-circle" size={16} color={theme.colors.textMuted} /></TouchableOpacity>}
                         </View>
                         {searchResults.length > 0 && (
-                            <View style={{
-                                position: 'absolute',
-                                top: Platform.OS === 'ios' ? 130 : (StatusBar.currentHeight || 0) + 96,
-                                left: 16, right: 16,
-                                backgroundColor: isDark ? theme.colors.surfaceLow : '#FFF',
-                                borderRadius: 14, borderWidth: 1.5, borderColor: theme.colors.border,
-                                zIndex: 20, overflow: 'hidden',
-                                shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 8, elevation: 8,
-                            }}>
+                            <View style={{ position: 'absolute', top: Platform.OS === 'ios' ? 130 : (StatusBar.currentHeight || 0) + 96, left: 16, right: 16, backgroundColor: isDark ? theme.colors.surfaceLow : '#FFF', borderRadius: 14, borderWidth: 1.5, borderColor: theme.colors.border, zIndex: 20, overflow: 'hidden', shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 8, elevation: 8 }}>
                                 {searchResults.map((r, i) => (
-                                    <TouchableOpacity
-                                        key={i}
-                                        onPress={() => handleSearchSelect(r)}
-                                        activeOpacity={0.75}
-                                        style={{
-                                            flexDirection: 'row', alignItems: 'center', gap: 10,
-                                            paddingHorizontal: 14, paddingVertical: 12,
-                                            borderBottomWidth: i < searchResults.length - 1 ? 1 : 0,
-                                            borderBottomColor: theme.colors.border,
-                                        }}
-                                    >
-                                        <View style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: theme.colors.primary + '18', alignItems: 'center', justifyContent: 'center' }}>
-                                            <Ionicons name="location-outline" size={14} color={theme.colors.primary} />
-                                        </View>
+                                    <TouchableOpacity key={i} onPress={() => handleSearchSelect(r)} activeOpacity={0.75} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: i < searchResults.length - 1 ? 1 : 0, borderBottomColor: theme.colors.border }}>
+                                        <View style={{ width: 30, height: 30, borderRadius: 15, backgroundColor: theme.colors.primary + '18', alignItems: 'center', justifyContent: 'center' }}><Ionicons name="location-outline" size={14} color={theme.colors.primary} /></View>
                                         <Text style={{ flex: 1, fontSize: 13, color: theme.colors.textPrimary, fontWeight: '500' }} numberOfLines={2}>{r.label}</Text>
                                     </TouchableOpacity>
                                 ))}
                             </View>
                         )}
                     </View>
-
-                    {/* Map */}
                     <View style={{ flex: 1 }}>
-                        <MapView
-                            style={{ flex: 1 }}
-                            provider={PROVIDER_GOOGLE}
-                            region={mapRegion}
-                            onRegionChangeComplete={handleRegionChangeComplete}
-                            showsUserLocation
-                            showsMyLocationButton={false}
-                            zoomControlEnabled zoomEnabled scrollEnabled rotateEnabled pitchEnabled
-                        />
-                        {/* Pin overlay */}
+                        <MapView style={{ flex: 1 }} provider={PROVIDER_GOOGLE} region={mapRegion} onRegionChangeComplete={handleRegionChangeComplete} showsUserLocation showsMyLocationButton={false} zoomControlEnabled zoomEnabled scrollEnabled rotateEnabled pitchEnabled />
                         <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' }}>
                             <View style={{ alignItems: 'center', marginBottom: 48 }}>
-                                <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 6, elevation: 8 }}>
-                                    <Ionicons name="location" size={22} color="#1a1a1a" />
-                                </View>
+                                <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: theme.colors.primary, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 6, elevation: 8 }}><Ionicons name="location" size={22} color="#1a1a1a" /></View>
                                 <View style={{ width: 2, height: 10, backgroundColor: theme.colors.primary }} />
                                 <View style={{ width: 8, height: 4, borderRadius: 4, backgroundColor: '#00000030' }} />
                             </View>
                         </View>
-                        {/* Re-centre button */}
-                        <TouchableOpacity
-                            onPress={autoDetect}
-                            style={{
-                                position: 'absolute', bottom: 160, right: 16,
-                                width: 46, height: 46, borderRadius: 23,
-                                backgroundColor: isDark ? theme.colors.surfaceLow : '#FFF',
-                                alignItems: 'center', justifyContent: 'center',
-                                borderWidth: 1.5, borderColor: theme.colors.border,
-                                shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 4, elevation: 4,
-                            }}
-                        >
+                        <TouchableOpacity onPress={autoDetect} style={{ position: 'absolute', bottom: 160, right: 16, width: 46, height: 46, borderRadius: 23, backgroundColor: isDark ? theme.colors.surfaceLow : '#FFF', alignItems: 'center', justifyContent: 'center', borderWidth: 1.5, borderColor: theme.colors.border, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 4, elevation: 4 }}>
                             <Ionicons name="navigate" size={20} color={theme.colors.primary} />
                         </TouchableOpacity>
                     </View>
-
-                    {/* Bottom sheet */}
-                    <View style={{
-                        backgroundColor: isDark ? theme.colors.surfaceLow : '#FFF',
-                        borderTopLeftRadius: 24, borderTopRightRadius: 24,
-                        borderTopWidth: 1, borderTopColor: theme.colors.border,
-                        padding: 20, paddingBottom: Platform.OS === 'ios' ? 36 : 20,
-                        shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, elevation: 8,
-                    }}>
+                    <View style={{ backgroundColor: isDark ? theme.colors.surfaceLow : '#FFF', borderTopLeftRadius: 24, borderTopRightRadius: 24, borderTopWidth: 1, borderTopColor: theme.colors.border, padding: 20, paddingBottom: Platform.OS === 'ios' ? 36 : 20, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, elevation: 8 }}>
                         {checking ? (
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-                                <ActivityIndicator size="small" color={theme.colors.primary} />
-                                <Text style={{ fontSize: 13, color: theme.colors.textMuted, fontWeight: '500' }}>Checking serviceability…</Text>
-                            </View>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16 }}><ActivityIndicator size="small" color={theme.colors.primary} /><Text style={{ fontSize: 13, color: theme.colors.textMuted, fontWeight: '500' }}>Checking serviceability…</Text></View>
                         ) : isServiceable === null ? (
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-                                <ActivityIndicator size="small" color={theme.colors.textMuted} />
-                                <Text style={{ fontSize: 13, color: theme.colors.textMuted, fontWeight: '500' }}>Move the map to select location…</Text>
-                            </View>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16 }}><ActivityIndicator size="small" color={theme.colors.textMuted} /><Text style={{ fontSize: 13, color: theme.colors.textMuted, fontWeight: '500' }}>Move the map to select location…</Text></View>
                         ) : (
                             <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 16 }}>
                                 <Ionicons name={isServiceable ? 'checkmark-circle' : 'close-circle'} size={18} color={isServiceable ? theme.colors.success : theme.colors.error} style={{ marginTop: 1 }} />
                                 <View style={{ flex: 1 }}>
-                                    <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 0.5, marginBottom: 3, textTransform: 'uppercase', color: isServiceable ? theme.colors.success : theme.colors.error }}>
-                                        {isServiceable ? '✓ Area is serviceable' : '✗ Not serviceable yet'}
-                                    </Text>
-                                    <Text style={{ fontSize: 14, fontWeight: '600', color: theme.colors.textPrimary, lineHeight: 20 }} numberOfLines={2}>
-                                        {locationText || 'Move the map to select a location'}
-                                    </Text>
+                                    <Text style={{ fontSize: 11, fontWeight: '700', letterSpacing: 0.5, marginBottom: 3, textTransform: 'uppercase', color: isServiceable ? theme.colors.success : theme.colors.error }}>{isServiceable ? '✓ Area is serviceable' : '✗ Not serviceable yet'}</Text>
+                                    <Text style={{ fontSize: 14, fontWeight: '600', color: theme.colors.textPrimary, lineHeight: 20 }} numberOfLines={2}>{locationText || 'Move the map to select a location'}</Text>
                                 </View>
                             </View>
                         )}
-                        <TouchableOpacity
-                            onPress={handleConfirmMapLocation}
-                            disabled={checking || !pinCoords || isServiceable === null || isServiceable === false}
-                            activeOpacity={0.85}
-                            style={{
-                                flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-                                backgroundColor: theme.colors.primary, paddingVertical: 16, borderRadius: 16,
-                                opacity: (checking || !pinCoords || isServiceable === null || isServiceable === false) ? 0.4 : 1,
-                            }}
-                        >
+                        <TouchableOpacity onPress={handleConfirmMapLocation} disabled={checking || !pinCoords || isServiceable === null || isServiceable === false} activeOpacity={0.85} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: theme.colors.primary, paddingVertical: 16, borderRadius: 16, opacity: (checking || !pinCoords || isServiceable === null || isServiceable === false) ? 0.4 : 1 }}>
                             <Text style={{ fontSize: 15, fontWeight: '800', color: '#1a1a1a' }}>Confirm This Location</Text>
                             <Ionicons name="checkmark-circle" size={18} color="#1a1a1a" />
                         </TouchableOpacity>
@@ -1123,8 +882,9 @@ function LocationStep({
         </View>
     );
 }
-// ─── Bike step ────────────────────────────────────────────────────────────────
-function BikeStep({ theme, isDark, bikes, selectedBikeId, onSavedBikeSelect, brand, setBrand, model, setModel, customModel, setCustomModel, cc, setCc, selectedBrand, setSelectedBrand, setSelectedBikeId, bsStandard, setBsStandard }) {
+
+// ─── Bike step (unchanged) ───────────────────────────────────────────────────
+function BikeStep({ theme, isDark, bikes, selectedBikeId, onSavedBikeSelect, brand, setBrand, model, setModel, customModel, setCustomModel, cc, setCc, selectedBrand, setSelectedBrand, setSelectedBikeId, bsStandard, setBsStandard, ccError }) {
     const [brandList, setBrandList] = useState([]);
     const [modelList, setModelList] = useState([]);
     const [loadingBrands, setLoadingBrands] = useState(false);
@@ -1136,11 +896,8 @@ function BikeStep({ theme, isDark, bikes, selectedBikeId, onSavedBikeSelect, bra
                 setLoadingBrands(true);
                 const response = await axiosClient.get('/api/admin/brands/getbrands');
                 setBrandList(response.data || []);
-            } catch (error) {
-                console.error('Failed to fetch brands:', error);
-            } finally {
-                setLoadingBrands(false);
-            }
+            } catch (error) { console.error('Failed to fetch brands:', error); }
+            finally { setLoadingBrands(false); }
         };
         fetchBrands();
     }, []);
@@ -1152,31 +909,18 @@ function BikeStep({ theme, isDark, bikes, selectedBikeId, onSavedBikeSelect, bra
                 setLoadingModels(true);
                 const response = await axiosClient.get('/api/admin/brands/getmodels', { params: { brandId: selectedBrand._id } });
                 setModelList(response.data || []);
-            } catch (error) {
-                console.error('Failed to fetch models:', error);
-                setModelList([]);
-            } finally {
-                setLoadingModels(false);
-            }
+            } catch (error) { console.error('Failed to fetch models:', error); setModelList([]); }
+            finally { setLoadingModels(false); }
         };
         fetchModels();
     }, [selectedBrand]);
 
     const handleBrandSelect = (b) => {
         if (selectedBrand?._id === b._id) return;
-        setSelectedBrand(b);
-        setBrand(b.brandName);
-        setModel('');
-        setCustomModel('');
-        setSelectedBikeId(null);
+        setSelectedBrand(b); setBrand(b.brandName); setModel(''); setCustomModel(''); setSelectedBikeId(null);
     };
 
-    const handleModelSelect = (m) => {
-        setModel(m.name);
-        setCustomModel('');
-        setSelectedBikeId(null);
-    };
-
+    const handleModelSelect = (m) => { setModel(m.name); setCustomModel(''); setSelectedBikeId(null); };
     const isOtherModel = model === 'Other';
 
     return (
@@ -1196,20 +940,22 @@ function BikeStep({ theme, isDark, bikes, selectedBikeId, onSavedBikeSelect, bra
                     </View>
                 </View>
             )}
+
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
                 <Text style={labelStyle(theme)}>Brand</Text>
                 {loadingBrands && <ActivityIndicator size="small" color={theme.colors.primary} />}
             </View>
             {loadingBrands ? (
                 <View style={{ flexDirection: 'row', gap: 8, marginBottom: 20 }}>
-                    {[80, 60, 100, 70].map((w, i) => (<View key={i} style={{ width: w, height: 38, borderRadius: 50, backgroundColor: isDark ? theme.colors.surfaceHigh : theme.colors.surfaceLow }} />))}
+                    {[80, 60, 100, 70].map((w, i) => <View key={i} style={{ width: w, height: 38, borderRadius: 50, backgroundColor: isDark ? theme.colors.surfaceHigh : theme.colors.surfaceLow }} />)}
                 </View>
             ) : (
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 20 }}>
-                    {brandList.map((b) => (<Pill key={b._id} label={b.brandName} selected={selectedBrand?._id === b._id} onPress={() => handleBrandSelect(b)} theme={theme} isDark={isDark} />))}
-                    {brandList.length === 0 && !loadingBrands && (<Text style={{ fontSize: 13, color: theme.colors.textMuted }}>No brands available.</Text>)}
+                    {brandList.map((b) => <Pill key={b._id} label={b.brandName} selected={selectedBrand?._id === b._id} onPress={() => handleBrandSelect(b)} theme={theme} isDark={isDark} />)}
+                    {brandList.length === 0 && !loadingBrands && <Text style={{ fontSize: 13, color: theme.colors.textMuted }}>No brands available.</Text>}
                 </View>
             )}
+
             {selectedBrand && (
                 <>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 }}>
@@ -1218,36 +964,56 @@ function BikeStep({ theme, isDark, bikes, selectedBikeId, onSavedBikeSelect, bra
                     </View>
                     {loadingModels ? (
                         <View style={{ flexDirection: 'row', gap: 8, marginBottom: 20 }}>
-                            {[90, 70, 110, 65].map((w, i) => (<View key={i} style={{ width: w, height: 38, borderRadius: 50, backgroundColor: isDark ? theme.colors.surfaceHigh : theme.colors.surfaceLow }} />))}
+                            {[90, 70, 110, 65].map((w, i) => <View key={i} style={{ width: w, height: 38, borderRadius: 50, backgroundColor: isDark ? theme.colors.surfaceHigh : theme.colors.surfaceLow }} />)}
                         </View>
                     ) : (
                         <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginBottom: 20 }}>
-                            {modelList.map((m) => (<Pill key={m._id || m.name} label={m.name} selected={model === m.name} onPress={() => handleModelSelect(m)} theme={theme} isDark={isDark} />))}
+                            {modelList.map((m) => <Pill key={m._id || m.name} label={m.name} selected={model === m.name} onPress={() => handleModelSelect(m)} theme={theme} isDark={isDark} />)}
                             <Pill label="Other" selected={model === 'Other'} onPress={() => { setModel('Other'); setCustomModel(''); setSelectedBikeId(null); }} theme={theme} isDark={isDark} />
-                            {modelList.length === 0 && !loadingModels && (<Text style={{ fontSize: 13, color: theme.colors.textMuted, marginBottom: 8 }}>No models found for this brand.</Text>)}
+                            {modelList.length === 0 && !loadingModels && <Text style={{ fontSize: 13, color: theme.colors.textMuted, marginBottom: 8 }}>No models found for this brand.</Text>}
                         </View>
                     )}
                 </>
             )}
+
             {isOtherModel && (
                 <View style={{ marginBottom: 16 }}>
                     <Text style={[labelStyle(theme), { marginBottom: 8 }]}>Specify Model <Text style={{ color: theme.colors.error }}>*</Text></Text>
                     <StyledInput value={customModel} onChangeText={setCustomModel} placeholder="Enter model name" theme={theme} isDark={isDark} />
                 </View>
             )}
-            <Text style={[labelStyle(theme), { marginBottom: 8 }]}>Engine CC <Text style={{ color: theme.colors.textMuted, fontWeight: '500', textTransform: 'none' }}>(optional)</Text></Text>
-            <StyledInput value={cc} onChangeText={setCc} placeholder="e.g. 150, 200, 350" keyboardType="numeric" theme={theme} isDark={isDark} icon="speedometer-outline" />
-            <Text style={[labelStyle(theme), { marginBottom: 8, marginTop: 16 }]}>BS Standard <Text style={{ color: theme.colors.textMuted, fontWeight: '500', textTransform: 'none' }}>(optional)</Text></Text>
+
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                <Text style={labelStyle(theme)}>Engine CC</Text>
+                <Text style={{ fontSize: 12, color: theme.colors.error, fontWeight: '700' }}>*</Text>
+                <Text style={{ fontSize: 11, color: theme.colors.textMuted, fontWeight: '500' }}>(required)</Text>
+            </View>
+            <StyledInput
+                value={cc}
+                onChangeText={setCc}
+                placeholder="e.g. 150, 200, 350"
+                keyboardType="numeric"
+                theme={theme}
+                isDark={isDark}
+                icon="speedometer-outline"
+                hasError={ccError}
+            />
+            {ccError && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 }}>
+                    <Ionicons name="alert-circle-outline" size={14} color={theme.colors.error} />
+                    <Text style={{ fontSize: 12, color: theme.colors.error, fontWeight: '600' }}>
+                        Engine CC is required to proceed
+                    </Text>
+                </View>
+            )}
+
+            <Text style={[labelStyle(theme), { marginBottom: 8, marginTop: 16 }]}>
+                BS Standard{' '}
+                <Text style={{ color: theme.colors.textMuted, fontWeight: '500', textTransform: 'none' }}>(optional)</Text>
+            </Text>
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
                 {BS_STANDARDS.map((item) => (
-                    <Pill
-                        key={item.value}
-                        label={item.label}
-                        selected={bsStandard === item.value}
-                        onPress={() => setBsStandard(item.value)}
-                        theme={theme}
-                        isDark={isDark}
-                    />
+                    <Pill key={item.value} label={item.label} selected={bsStandard === item.value} onPress={() => setBsStandard(item.value)} theme={theme} isDark={isDark} />
                 ))}
             </View>
         </View>
@@ -1270,7 +1036,7 @@ function SummaryRow({ icon, label, value, theme, isMCI }) {
     );
 }
 
-// ─── Main Form ────────────────────────────────────────────────────────────────
+// ─── Main Form (updated schedule step) ───────────────────────────────────────
 export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 'Schedule Repair' }) {
     const mode = useSelector((s) => s.theme.mode);
     const theme = mode === 'dark' ? DarkTheme : LightTheme;
@@ -1280,6 +1046,7 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
 
     const [step, setStep] = useState(0);
     const [alert, setAlert] = useState(null);
+    const [ccError, setCcError] = useState(false);
     const slideAnim = useRef(new Animated.Value(0)).current;
     const fadeAnim = useRef(new Animated.Value(1)).current;
     const [selectedBrand, setSelectedBrand] = useState(null);
@@ -1302,6 +1069,7 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
     const [customModel, setCustomModel] = useState('');
     const [cc, setCc] = useState('');
     const [bsStandard, setBsStandard] = useState('');
+
     // Service
     const [selectedServices, setSelectedServices] = useState([]);
     const [otherServiceText, setOtherServiceText] = useState('');
@@ -1309,6 +1077,48 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
     const [preferredTime, setPreferredTime] = useState('');
     const [issue, setIssue] = useState('');
     const [serviceType, setServiceType] = useState(initialServiceType);
+
+    // Clear CC error when user types
+    useEffect(() => { if (cc.trim()) setCcError(false); }, [cc]);
+
+    // ─── NEW: Filter time slots based on selected date ─────────────────────────
+    const getAvailableTimeSlots = useCallback(() => {
+        if (!preferredDate) return TIME_SLOTS;
+        const isToday = new Date().toDateString() === new Date(preferredDate).toDateString();
+        if (!isToday) return TIME_SLOTS;
+        // For today, filter out slots that have already passed
+        return TIME_SLOTS.filter(slot => !isTimeSlotPassed(preferredDate, slot.value));
+    }, [preferredDate]);
+
+    // ─── NEW: Auto‑set emergency if selected time is within next hour on today ──
+    const handleTimeSelect = useCallback((timeValue) => {
+        setPreferredTime(timeValue);
+        if (!preferredDate) return;
+        const isToday = new Date().toDateString() === new Date(preferredDate).toDateString();
+        if (isToday && isWithinNextHour(preferredDate, timeValue)) {
+            if (serviceType !== 'Emergency Repair') {
+                setServiceType('Emergency Repair');
+                // Optional: Show a subtle alert to inform the user
+                setAlert({
+                    type: 'info',
+                    message: 'Selected time is within the next hour. Service type changed to Emergency Repair.'
+                });
+                setTimeout(() => setAlert(null), 3000);
+            }
+        }
+    }, [preferredDate, serviceType]);
+
+    // ─── NEW: When date changes, clear invalid time and reset emergency if needed ──
+    useEffect(() => {
+        if (!preferredDate) return;
+        const available = getAvailableTimeSlots();
+        if (preferredTime && !available.some(slot => slot.value === preferredTime)) {
+            setPreferredTime('');
+            // Optionally notify user
+            setAlert({ type: 'warning', message: 'Selected time is no longer available. Please choose a new time slot.' });
+            setTimeout(() => setAlert(null), 3000);
+        }
+    }, [preferredDate, preferredTime, getAvailableTimeSlots]);
 
     const animateToNext = useCallback(() => {
         Animated.timing(fadeAnim, { toValue: 0, duration: 120, useNativeDriver: true }).start(() => {
@@ -1335,24 +1145,17 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
 
     const handleSavedBikeSelect = (bike, brandList) => {
         if (selectedBikeId === bike._id) {
-            setSelectedBikeId(null);
-            setBrand('');
-            setModel('');
-            setCc('');
-            setBsStandard('');
-            setSelectedBrand(null);
+            setSelectedBikeId(null); setBrand(''); setModel(''); setCc(''); setBsStandard(''); setSelectedBrand(null);
         } else {
-            setSelectedBikeId(bike._id);
-            setBrand(bike.brand || '');
-            setModel(bike.model || '');
+            setSelectedBikeId(bike._id); setBrand(bike.brand || ''); setModel(bike.model || '');
             setCc(bike.cc ? String(bike.cc) : '');
-            // Normalize BS value to uppercase for consistency
             const bsValue = bike.bs ? bike.bs.toUpperCase() : '';
             setBsStandard(bsValue);
             const matched = brandList.find((b) => b.brandName.toLowerCase() === (bike.brand || '').toLowerCase());
             setSelectedBrand(matched || null);
         }
     };
+
     const validateStep = () => {
         if (step === 1) {
             if (!name.trim()) return 'Please enter your name.';
@@ -1362,12 +1165,14 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
             if (!brand) return 'Please select a bike brand.';
             if (!model) return 'Please select a bike model.';
             if (model === 'Other' && !customModel.trim()) return 'Please specify the model name.';
+            if (!cc.trim() || isNaN(Number(cc)) || Number(cc) <= 0) {
+                setCcError(true);
+                return 'Engine CC is required. Please enter a valid value.';
+            }
         }
         if (step === 3) {
             if (selectedServices.length === 0) return 'Please select at least one service.';
-            if (selectedServices.includes('other') && !otherServiceText.trim()) {
-                return 'Please describe the service you need.';
-            }
+            if (selectedServices.includes('other') && !otherServiceText.trim()) return 'Please describe the service you need.';
         }
         if (step === 4) {
             if (!preferredDate) return 'Please select a date.';
@@ -1387,37 +1192,24 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
     };
 
     const handleSubmit = () => {
-        if (!coords) {
-            setAlert({ type: 'error', message: 'Location is required.' });
-            return;
-        }
-        if (!city) {
-            setAlert({ type: 'error', message: 'Could not determine city from location. Please try again.' });
-            return;
-        }
+        if (!coords) { setAlert({ type: 'error', message: 'Location is required.' }); return; }
+        if (!city) { setAlert({ type: 'error', message: 'Could not determine city from location. Please try again.' }); return; }
 
         const finalModel = model === 'Other' ? customModel.trim() : model;
-
-        // Build services array for backend
         const finalServices = selectedServices.map(id => {
             if (id === 'other') return otherServiceText.trim();
             return getServiceLabel(id);
         }).filter(Boolean);
         const localDateStr = new Date(preferredDate).toLocaleDateString('en-CA');
+
         const payload = {
             name: name.trim(),
             email: user?.email || '',
             contactNo: contact.trim(),
             city: city.toUpperCase(),
             address: locationText,
-            userLocation: {
-                type: "Point",
-                coordinates: [coords.longitude, coords.latitude]
-            },
-            location: {
-                latitude: coords.latitude,
-                longitude: coords.longitude
-            },
+            userLocation: { type: "Point", coordinates: [coords.longitude, coords.latitude] },
+            location: { latitude: coords.latitude, longitude: coords.longitude },
             isWithinServiceArea: isServiceable || false,
             distanceFromCenter: distanceFromCenter,
             selectedBrand: brand,
@@ -1440,6 +1232,7 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
 
     const currentStep = STEPS[step];
     const isLastStep = step === STEPS.length - 1;
+    const availableTimeSlots = getAvailableTimeSlots();
 
     return (
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -1450,17 +1243,14 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
                 keyboardShouldPersistTaps="handled"
             >
                 <ProgressBar step={step} total={STEPS.length} theme={theme} />
-                {/* ── Service Type Toggle ─────────────────────────────── */}
+
+                {/* Service Type Toggle */}
                 <View style={{
                     flexDirection: 'row',
                     backgroundColor: isDark ? theme.colors.surfaceLow : '#F5F0E8',
-                    borderRadius: 16,
-                    padding: 4,
-                    marginBottom: 24,
+                    borderRadius: 16, padding: 4, marginBottom: 24,
                     borderWidth: 1.5,
-                    borderColor: serviceType === 'Emergency Repair'
-                        ? '#FF6B6B44'
-                        : theme.colors.border,
+                    borderColor: serviceType === 'Emergency Repair' ? '#FF6B6B44' : theme.colors.border,
                 }}>
                     {['Schedule Repair', 'Emergency Repair'].map((type) => {
                         const isActive = serviceType === type;
@@ -1472,42 +1262,29 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
                                 onPress={() => setServiceType(type)}
                                 activeOpacity={0.8}
                                 style={{
-                                    flex: 1,
-                                    flexDirection: 'row',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    gap: 6,
-                                    paddingVertical: 11,
-                                    borderRadius: 12,
-                                    backgroundColor: isActive
-                                        ? (isDark ? activeColor + '22' : activeColor + '18')
-                                        : 'transparent',
+                                    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+                                    gap: 6, paddingVertical: 11, borderRadius: 12,
+                                    backgroundColor: isActive ? (isDark ? activeColor + '22' : activeColor + '18') : 'transparent',
                                     borderWidth: isActive ? 1.5 : 0,
                                     borderColor: isActive ? activeColor : 'transparent',
                                 }}
                             >
-                                <MaterialCommunityIcons
-                                    name={isEmergency ? 'alert-octagon' : 'calendar-clock'}
-                                    size={15}
-                                    color={isActive ? activeColor : theme.colors.textMuted}
-                                />
-                                <Text style={{
-                                    fontSize: 12,
-                                    fontWeight: isActive ? '800' : '600',
-                                    color: isActive ? activeColor : theme.colors.textMuted,
-                                    letterSpacing: 0.3,
-                                }}>
+                                <MaterialCommunityIcons name={isEmergency ? 'alert-octagon' : 'calendar-clock'} size={15} color={isActive ? activeColor : theme.colors.textMuted} />
+                                <Text style={{ fontSize: 12, fontWeight: isActive ? '800' : '600', color: isActive ? activeColor : theme.colors.textMuted, letterSpacing: 0.3 }}>
                                     {isEmergency ? 'Emergency' : 'Schedule'}
                                 </Text>
                             </TouchableOpacity>
                         );
                     })}
                 </View>
+
                 <View style={{ marginBottom: 24 }}>
                     <Text style={{ fontSize: 26, fontWeight: '900', color: theme.colors.textPrimary, letterSpacing: -0.3, lineHeight: 32 }}>{currentStep.title}</Text>
                     <Text style={{ fontSize: 14, color: theme.colors.textMuted, marginTop: 6, fontWeight: '500' }}>{currentStep.subtitle}</Text>
                 </View>
+
                 {alert && <Alert type={alert.type} message={alert.message} visible onDismiss={() => setAlert(null)} autoDismiss={3500} style={{ marginBottom: 16 }} />}
+
                 <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
                     {step === 0 && (
                         <LocationStep
@@ -1520,12 +1297,20 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
                             onNext={goNext}
                         />
                     )}
+
                     {step === 1 && (
                         <View style={{ gap: 16 }}>
-                            <View><Text style={[labelStyle(theme), { marginBottom: 8 }]}>Your Name</Text><StyledInput value={name} onChangeText={setName} placeholder="Full name" theme={theme} isDark={isDark} icon="person-outline" /></View>
-                            <View><Text style={[labelStyle(theme), { marginBottom: 8 }]}>Mobile Number</Text><StyledInput value={contact} onChangeText={setContact} placeholder="10-digit number" keyboardType="phone-pad" theme={theme} isDark={isDark} icon="call-outline" prefix="+91" /></View>
+                            <View>
+                                <Text style={[labelStyle(theme), { marginBottom: 8 }]}>Your Name</Text>
+                                <StyledInput value={name} onChangeText={setName} placeholder="Full name" theme={theme} isDark={isDark} icon="person-outline" />
+                            </View>
+                            <View>
+                                <Text style={[labelStyle(theme), { marginBottom: 8 }]}>Mobile Number</Text>
+                                <StyledInput value={contact} onChangeText={setContact} placeholder="10-digit number" keyboardType="phone-pad" theme={theme} isDark={isDark} icon="call-outline" prefix="+91" />
+                            </View>
                         </View>
                     )}
+
                     {step === 2 && (
                         <BikeStep
                             theme={theme} isDark={isDark}
@@ -1541,28 +1326,42 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
                             setSelectedBikeId={setSelectedBikeId}
                             bsStandard={bsStandard}
                             setBsStandard={setBsStandard}
+                            ccError={ccError}
                         />
                     )}
+
                     {step === 3 && (
                         <ServiceStep
-                            theme={theme}
-                            isDark={isDark}
+                            theme={theme} isDark={isDark}
                             selectedServices={selectedServices}
                             setSelectedServices={setSelectedServices}
                             otherServiceText={otherServiceText}
                             setOtherServiceText={setOtherServiceText}
                         />
                     )}
+
                     {step === 4 && (
                         <View>
                             <Text style={[labelStyle(theme), { marginBottom: 14 }]}>Choose a Date</Text>
                             <DateRow selectedDate={preferredDate} onSelect={setPreferredDate} theme={theme} isDark={isDark} />
                             <Text style={[labelStyle(theme), { marginTop: 24, marginBottom: 14 }]}>Choose a Time Slot</Text>
+                            {availableTimeSlots.length === 0 && preferredDate && (
+                                <View style={{ padding: 16, backgroundColor: theme.colors.warning + '20', borderRadius: 12, marginBottom: 16 }}>
+                                    <Text style={{ fontSize: 13, color: theme.colors.warning, fontWeight: '600' }}>
+                                        No available time slots for the selected date. Please choose another date.
+                                    </Text>
+                                </View>
+                            )}
                             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-                                {TIME_SLOTS.map((slot) => {
+                                {availableTimeSlots.map((slot) => {
                                     const isSelected = preferredTime === slot.value;
                                     return (
-                                        <TouchableOpacity key={slot.value} onPress={() => setPreferredTime(slot.value)} activeOpacity={0.8} style={{ width: '30%', paddingVertical: 11, borderRadius: 14, borderWidth: 1.5, borderColor: isSelected ? theme.colors.primary : theme.colors.border, backgroundColor: isSelected ? theme.colors.primary : isDark ? theme.colors.surfaceLow : '#FFF', alignItems: 'center', justifyContent: 'center' }}>
+                                        <TouchableOpacity
+                                            key={slot.value}
+                                            onPress={() => handleTimeSelect(slot.value)}
+                                            activeOpacity={0.8}
+                                            style={{ width: '30%', paddingVertical: 11, borderRadius: 14, borderWidth: 1.5, borderColor: isSelected ? theme.colors.primary : theme.colors.border, backgroundColor: isSelected ? theme.colors.primary : isDark ? theme.colors.surfaceLow : '#FFF', alignItems: 'center', justifyContent: 'center' }}
+                                        >
                                             <Text style={{ fontSize: 12.5, fontWeight: isSelected ? '800' : '600', color: isSelected ? '#1a1a1a' : theme.colors.textSecondary, letterSpacing: 0.2 }}>{slot.label}</Text>
                                         </TouchableOpacity>
                                     );
@@ -1571,11 +1370,15 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
                             {preferredDate && preferredTime && (
                                 <View style={{ marginTop: 20, padding: 16, borderRadius: 16, backgroundColor: theme.colors.primary + '18', borderWidth: 1, borderColor: theme.colors.primary + '44', flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                                     <Ionicons name="calendar-outline" size={20} color={theme.colors.primary} />
-                                    <View><Text style={{ fontSize: 13, fontWeight: '700', color: theme.colors.primary }}>Scheduled for</Text><Text style={{ fontSize: 12, color: theme.colors.textSecondary, marginTop: 2, fontWeight: '500' }}>{preferredDate} at {preferredTime}</Text></View>
+                                    <View>
+                                        <Text style={{ fontSize: 13, fontWeight: '700', color: theme.colors.primary }}>Scheduled for</Text>
+                                        <Text style={{ fontSize: 12, color: theme.colors.textSecondary, marginTop: 2, fontWeight: '500' }}>{preferredDate} at {preferredTime}</Text>
+                                    </View>
                                 </View>
                             )}
                         </View>
                     )}
+
                     {step === 5 && (
                         <View>
                             <View style={{ borderRadius: 20, overflow: 'hidden', borderWidth: 1.5, borderColor: theme.colors.border, backgroundColor: isDark ? theme.colors.surfaceLow : '#FFF', marginBottom: 24 }}>
@@ -1585,35 +1388,37 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
                                     <SummaryRow icon="location-outline" label="Location" value={locationText} theme={theme} />
                                     <SummaryRow icon="person-outline" label="Name" value={name} theme={theme} />
                                     <SummaryRow icon="motorbike" label="Bike" value={`${brand} ${model === 'Other' ? customModel : model}${cc ? ` · ${cc}cc` : ''}`} theme={theme} isMCI />
-                                    <SummaryRow
-                                        icon="car-sport-outline"  // or any suitable icon
-                                        label="BS Standard"
-                                        value={bsStandard || 'Not specified'}
-                                        theme={theme}
-                                    />
-                                    {/* FIXED: Display selected services correctly */}
+                                    <SummaryRow icon="car-sport-outline" label="BS Standard" value={bsStandard || 'Not specified'} theme={theme} />
                                     <SummaryRow
                                         icon="construct-outline"
                                         label="Service"
                                         value={selectedServices.map(id => {
                                             if (id === 'other') return otherServiceText.trim() || 'Other';
-                                            const found = SERVICE_TYPES.find(s => s.id === id);
-                                            return found ? found.label.replace('\n', ' ') : id;
+                                            return getServiceLabel(id);
                                         }).join(', ')}
                                         theme={theme}
                                     />
                                     <SummaryRow icon="calendar-outline" label="Schedule" value={`${preferredDate} · ${preferredTime}`} theme={theme} />
                                 </View>
                             </View>
-                            <Text style={[labelStyle(theme), { marginBottom: 10 }]}>Any specific issue? <Text style={{ color: theme.colors.textMuted, fontWeight: '500', textTransform: 'none' }}>(optional)</Text></Text>
+                            <Text style={[labelStyle(theme), { marginBottom: 10 }]}>
+                                Any specific issue?{' '}
+                                <Text style={{ color: theme.colors.textMuted, fontWeight: '500', textTransform: 'none' }}>(optional)</Text>
+                            </Text>
                             <StyledInput value={issue} onChangeText={setIssue} placeholder="e.g. Engine makes a weird noise, brakes are loose…" multiline numberOfLines={4} theme={theme} isDark={isDark} />
                         </View>
                     )}
                 </Animated.View>
+
                 {step > 0 && (
                     <View style={{ flexDirection: 'row', gap: 12, marginTop: 32 }}>
-                        <TouchableOpacity onPress={goPrev} activeOpacity={0.8} style={{ width: 54, height: 54, borderRadius: 16, borderWidth: 1.5, borderColor: theme.colors.border, backgroundColor: isDark ? theme.colors.surfaceLow : '#FFF', alignItems: 'center', justifyContent: 'center' }}><Ionicons name="arrow-back" size={20} color={theme.colors.primary} /></TouchableOpacity>
-                        <TouchableOpacity onPress={handleNext} activeOpacity={0.85} style={{ flex: 1, height: 54, borderRadius: 16, backgroundColor: theme.colors.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}><Text style={{ fontSize: 15, fontWeight: '900', color: '#1a1a1a', letterSpacing: 0.2 }}>{isLastStep ? 'Book Service' : 'Continue'}</Text><Ionicons name={isLastStep ? 'checkmark-circle' : 'arrow-forward'} size={18} color="#1a1a1a" /></TouchableOpacity>
+                        <TouchableOpacity onPress={goPrev} activeOpacity={0.8} style={{ width: 54, height: 54, borderRadius: 16, borderWidth: 1.5, borderColor: theme.colors.border, backgroundColor: isDark ? theme.colors.surfaceLow : '#FFF', alignItems: 'center', justifyContent: 'center' }}>
+                            <Ionicons name="arrow-back" size={20} color={theme.colors.primary} />
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={handleNext} activeOpacity={0.85} style={{ flex: 1, height: 54, borderRadius: 16, backgroundColor: theme.colors.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                            <Text style={{ fontSize: 15, fontWeight: '900', color: '#1a1a1a', letterSpacing: 0.2 }}>{isLastStep ? 'Book Service' : 'Continue'}</Text>
+                            <Ionicons name={isLastStep ? 'checkmark-circle' : 'arrow-forward'} size={18} color="#1a1a1a" />
+                        </TouchableOpacity>
                     </View>
                 )}
             </ScrollView>

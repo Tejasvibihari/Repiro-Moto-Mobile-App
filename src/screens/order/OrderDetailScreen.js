@@ -29,6 +29,9 @@ import useOrder from '../../hooks/useOrder';
 import PopUp from '../../components/common/PopUp';
 import axiosClient from '../../services/axiosClient';
 import { getImageUrl } from '../../utils/imageUtils';
+import MechanicRatingCard from '../../components/orders/MechanicRatingCard';
+import OrderSupportCard from '../../components/orders/OrderSupportCard';
+
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -346,7 +349,7 @@ const smc = StyleSheet.create({
 // ─── Financial Summary Card ───────────────────────────────────────────────────
 function FinancialSummaryCard({ total, coupon, paymentStatus, paymentMethod, amountPaid, paymentDate, C, isDark }) {
     if (!total) return null;
-    console.log("total", total);
+
     const {
         baseAmount = 0,
         discount = 0,
@@ -1760,7 +1763,11 @@ export default function OrderDetailScreen({ route, navigation }) {
                     mechanicImage={order.mechanicImage}
                     onMessage={() => Alert.alert('Message', 'Chat coming soon.')}
                 />
-
+                <MechanicRatingCard
+                    order={order}
+                    orderId={order._id}
+                />
+                <OrderSupportCard order={order} navigation={navigation} />
                 {/* Financial summary */}
                 <FinancialSummaryCard
                     total={order.total}
