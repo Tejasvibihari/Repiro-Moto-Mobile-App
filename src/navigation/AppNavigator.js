@@ -17,6 +17,7 @@ import NewOrderScreen from "../screens/order/NewOrderScreen";
 import OrderScreen from "../screens/order/OrderScreen";
 import NotificationScreen from "../screens/notification/NotificationScreen";
 import CheckoutScreen from "../screens/payment/CheckoutScreen";
+import ChatSupportScreen from "../screens/support/ChatSupportScreen";
 
 const Stack = createNativeStackNavigator();
 
@@ -48,6 +49,8 @@ function AppStack() {
 
             <Stack.Screen name="QrCodeScreen" component={QrCodeScreen} />
             <Stack.Screen name="Notifications" component={NotificationScreen} />
+
+            <Stack.Screen name="ChatSupport" component={ChatSupportScreen} />
         </Stack.Navigator>
     );
 }
