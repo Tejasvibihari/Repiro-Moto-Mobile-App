@@ -59,7 +59,7 @@ export default function SupportOrderCard({ order, index = 0, navigation }) {
         ? `${order.bike.brand ?? ''} ${order.bike.model ?? ''}`.trim()
         : order?.bikeName ?? '';
     const orderId = order?._id
-        ? `#${String(order._id).slice(-6).toUpperCase()}`
+        ? `#${String(order.orderId)}`
         : '#------';
     const completedAt = order?.completedAt || order?.updatedAt || order?.createdAt;
 
