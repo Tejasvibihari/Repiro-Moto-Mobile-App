@@ -19,10 +19,14 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LightTheme, DarkTheme } from '../../styles/Theme';
 
 const STATUS_META = {
-    completed: { label: 'Completed', color: '#2ECC9A', icon: 'checkmark-circle' },
-    cancelled: { label: 'Cancelled', color: '#FF6B6B', icon: 'close-circle' },
-    pending: { label: 'Pending', color: '#e2a731', icon: 'time' },
-    ongoing: { label: 'Ongoing', color: '#5B9CF6', icon: 'construct' },
+    'Pending': { label: 'Pending', color: '#e2a731', icon: 'time' },
+    'Mechanic Assigned': { label: 'Mechanic Assigned', color: '#3498db', icon: 'person' },
+    'Mechanic Arrived': { label: 'Mechanic Arrived', color: '#2ecc71', icon: 'location' },
+    'In Progress': { label: 'In Progress', color: '#5B9CF6', icon: 'construct' },
+    'Work Completed': { label: 'Work Completed', color: '#9b59b6', icon: 'checkmark-done' },
+    'Invoice Generated': { label: 'Invoice Generated', color: '#f39c12', icon: 'document' },
+    'Completed': { label: 'Completed', color: '#2ECC9A', icon: 'checkmark-circle' },
+    'Cancelled': { label: 'Cancelled', color: '#FF6B6B', icon: 'close-circle' }
 };
 
 function formatDate(dateStr) {
@@ -52,8 +56,9 @@ export default function SupportOrderCard({ order, index = 0, navigation }) {
         ]).start();
     }, []);
 
-    const statusKey = order?.status?.toLowerCase() ?? 'completed';
-    const meta = STATUS_META[statusKey] ?? STATUS_META.completed;
+    const statusKey = order?.status ?? 'Completed';
+    const meta = STATUS_META[statusKey] ?? STATUS_META['Completed'];
+
     const serviceLabel = order?.serviceType || order?.service?.name || order?.serviceName || 'Repair Service';
     const bikeLabel = order?.bike
         ? `${order.bike.brand ?? ''} ${order.bike.model ?? ''}`.trim()

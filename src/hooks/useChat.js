@@ -156,10 +156,44 @@ export default function useChat(orderId) {
     }, [orderId, token]);
 
     // ── Send message ─────────────────────────────────────────────────────────
-    const sendMessage = useCallback(async (text, attachments = []) => {
+    // hooks/useChat.js – inside the useChat function
+
+    const sendMessage = useCallback(async (text, attachments = [], options = {}) => {
+        const { skipOptimistic = false } = options;
         const trimmed = text?.trim();
         if (!trimmed || !orderId) return;
 
+        // ── When skipOptimistic = true, send without showing a temp message ──
+        if (skipOptimistic) {
+            setSending(true);
+            try {
+                if (socketRef.current?.connected) {
+                    socketRef.current.emit(
+                        'send-message',
+                        { orderId: orderId.toString(), message: trimmed, attachments },
+                        (ack) => {
+                            if (ack?.error) {
+                                // Optionally show an error toast
+                                console.warn('Message failed:', ack.error);
+                            }
+                            setSending(false);
+                        }
+                    );
+                } else {
+                    await axiosClient.post(`/api/chat/${orderId}/messages`, {
+                        message: trimmed,
+                        attachments,
+                    });
+                    setSending(false);
+                }
+            } catch (err) {
+                setSending(false);
+                // Optionally set an error state
+            }
+            return;
+        }
+
+        // ── Normal flow with optimistic message (existing code) ──
         const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
         const optimistic = {
             _id: tempId,
@@ -171,14 +205,11 @@ export default function useChat(orderId) {
             isRead: false,
             _pending: true,
         };
-
-        // Track this temp ID so new-message handler knows it's in-flight
         pendingTempIds.current.add(tempId);
         setMessages((prev) => [...prev, optimistic]);
         setSending(true);
 
         const replace = (real) => {
-            // Remove from pending set — new-message handler won't touch it now
             pendingTempIds.current.delete(tempId);
             setMessages((prev) =>
                 prev.map((m) => (m._id === tempId ? { ...real, _pending: false } : m))
@@ -203,12 +234,8 @@ export default function useChat(orderId) {
                         if (ack?.error) {
                             markFailed();
                         } else if (ack?.message) {
-                            // Ack arrived — if new-message already replaced it via
-                            // pendingTempIds path, the map below is a harmless no-op
-                            // because tempId is already gone from the list.
                             replace(ack.message);
                         } else {
-                            // Server ack without a payload — just mark as sent
                             pendingTempIds.current.delete(tempId);
                             setMessages((prev) =>
                                 prev.map((m) =>
@@ -220,7 +247,6 @@ export default function useChat(orderId) {
                     }
                 );
             } else {
-                // REST fallback (no socket)
                 const res = await axiosClient.post(`/api/chat/${orderId}/messages`, {
                     message: trimmed,
                     attachments,

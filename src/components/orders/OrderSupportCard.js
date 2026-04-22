@@ -140,11 +140,9 @@ export default function OrderSupportCard({ order, navigation }) {
     }, []);
 
     const goToSupport = (autoMessage) => {
-        // Navigate to the Drawer's Support screen, passing the pre-built message.
-        // Works whether called from DrawerNavigator or nested inside a stack.
-        navigation.navigate('Support', { autoMessage });
+        // Navigate directly to ChatSupportScreen, passing order and autoMessage
+        navigation.navigate('ChatSupport', { order, autoMessage });
     };
-
     return (
         <Animated.View
             style={[

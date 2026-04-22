@@ -193,7 +193,7 @@ function ConnectionBanner({ connected, error, theme }) {
 
 // ─── Order pill ───────────────────────────────────────────────────────────────
 function OrderPill({ order, theme, isDark }) {
-    const orderId = order?._id ? `#${String(order._id).slice(-6).toUpperCase()}` : '';
+    const orderId = order?._id ? `#${String(order.orderId)}` : '';
     const serviceLabel = order?.serviceType || order?.service?.name || order?.serviceName || 'Service';
     const bikeLabel = order?.bike
         ? `${order.bike.brand ?? ''} ${order.bike.model ?? ''}`.trim()
@@ -233,6 +233,7 @@ export default function ChatSupportScreen({ route, navigation }) {
     const theme = mode === 'dark' ? DarkTheme : LightTheme;
     const isDark = mode === 'dark';
     const insets = useSafeAreaInsets();
+    const autoMessage = route?.params?.autoMessage;
 
     const {
         messages, loading, sending, connected,
@@ -246,7 +247,14 @@ export default function ChatSupportScreen({ route, navigation }) {
 
     const listRef = useRef(null);
     const inputRef = useRef(null);
-
+    const hasAutoSent = useRef(false);
+    useEffect(() => {
+        if (autoMessage && !hasAutoSent.current && connected && !loading && !sending) {
+            hasAutoSent.current = true;
+            // Send without optimistic update – no temp message, only the real one
+            sendMessage(autoMessage, [], { skipOptimistic: true });
+        }
+    }, [autoMessage, connected, loading, sending, sendMessage]);
     // ── Keyboard listeners — scroll to bottom when keyboard opens ─────────────
     useEffect(() => {
         const show = Keyboard.addListener(
@@ -305,7 +313,11 @@ export default function ChatSupportScreen({ route, navigation }) {
         for (const msg of messages) {
             const label = formatDateLabel(msg.createdAt);
             if (label !== lastLabel) {
-                items.push({ type: 'date', id: `date_${msg._id ?? msg.createdAt}`, label });
+                items.push({
+                    type: 'date',
+                    id: `date_${label}_${msg._id ?? msg.createdAt}_${Math.random()}`,
+                    label,
+                });
                 lastLabel = label;
             }
             items.push({ type: 'msg', ...msg });
