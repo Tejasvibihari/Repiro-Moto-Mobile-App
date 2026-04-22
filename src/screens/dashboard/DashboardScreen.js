@@ -141,13 +141,14 @@ const qa = StyleSheet.create({
 // ══════════════════════════════════════════════════════════════════════════════
 const ORDER_STATUS_CFG = {
     'pending': { color: '#E2A731', icon: 'clock-outline', label: 'Pending' },
+    'mechanic assigned': { color: '#5B8CFF', icon: 'account-hard-hat', label: 'Mechanic Assigned' },
+    'mechanic arrived': { color: '#5B8CFF', icon: 'car-clock-outline', label: 'Mechanic Arrived' },
     'in progress': { color: '#5B8CFF', icon: 'progress-wrench', label: 'In Progress' },
-    'mechanic assigned': { color: '#5B8CFF', icon: 'account-hard-hat', label: 'Assigned' },
+    'work completed': { color: '#2ECC9A', icon: 'check-circle-outline', label: 'Work Completed' },
+    'invoice generated': { color: '#2ECC9A', icon: 'receipt', label: 'Invoice Generated' },
     'completed': { color: '#2ECC9A', icon: 'check-circle-outline', label: 'Completed' },
-    'invoice generated': { color: '#2ECC9A', icon: 'receipt', label: 'Invoice Ready' },
     'cancelled': { color: '#FF6B6B', icon: 'close-circle-outline', label: 'Cancelled' },
 };
-
 function RecentOrderCard({ order, onPress, C, isDark }) {
     if (!order) return null;
     const statusKey = (order.status ?? 'pending').toLowerCase();
