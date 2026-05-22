@@ -445,58 +445,7 @@ const nb = StyleSheet.create({
     statusLabel: { fontSize: 9, fontWeight: '800', letterSpacing: 1 },
 });
 
-// ══════════════════════════════════════════════════════════════════════════════
-// 6. EXCLUSIVE OFFERS
-// ══════════════════════════════════════════════════════════════════════════════
-const OFFERS = [
-    { id: '1', badge: 'FLAT 30% OFF', title: 'First Service\nSpecial', code: 'FIRST30', accent: '#E2A731', textColor: '#1a1a1a' },
-    { id: '2', badge: 'FREE CHECK', title: 'Free Health\nCheck-up', code: 'FREECHECK', accent: '#5B8CFF', textColor: '#fff' },
-    { id: '3', badge: '₹200 OFF', title: 'Brake & Tyre\nCombo Deal', code: 'BRAKE200', accent: '#2ECC9A', textColor: '#1a1a1a' },
-    { id: '4', badge: '25% OFF', title: 'Oil Change\nWeekend Deal', code: 'OIL25', accent: '#FF6B6B', textColor: '#fff' },
-];
 
-function ExclusiveOffers({ onOfferTap, C, isDark }) {
-    return (
-        <FlatList
-            data={OFFERS}
-            keyExtractor={(o) => o.id}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={eo.listContent}
-            ItemSeparatorComponent={() => <View style={{ width: 12 }} />}
-            renderItem={({ item }) => (
-                <TouchableOpacity
-                    style={[eo.card, { backgroundColor: item.accent, shadowColor: item.accent }]}
-                    onPress={() => onOfferTap(item)}
-                    activeOpacity={0.82}
-                >
-                    <View style={[eo.badgeWrap, { backgroundColor: 'rgba(0,0,0,0.2)' }]}>
-                        <Text style={[eo.badge, { color: item.textColor }]}>{item.badge}</Text>
-                    </View>
-                    <Text style={[eo.title, { color: item.textColor }]}>{item.title}</Text>
-                    <View style={[eo.codeRow, { backgroundColor: 'rgba(0,0,0,0.15)' }]}>
-                        <Text style={[eo.code, { color: item.textColor }]}>{item.code}</Text>
-                        <Ionicons name="arrow-forward" size={13} color={item.textColor} />
-                    </View>
-                </TouchableOpacity>
-            )}
-        />
-    );
-}
-const OFFER_W = W * 0.56;
-const eo = StyleSheet.create({
-    listContent: { paddingRight: 4 },
-    card: {
-        width: OFFER_W, borderRadius: 20, padding: 18, gap: 12,
-        shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 16, elevation: 8,
-        justifyContent: 'space-between',
-    },
-    badgeWrap: { alignSelf: 'flex-start', paddingHorizontal: 9, paddingVertical: 4, borderRadius: 20 },
-    badge: { fontSize: 10, fontWeight: '900', letterSpacing: 1.2 },
-    title: { fontSize: 18, fontWeight: '900', letterSpacing: -0.2, lineHeight: 24 },
-    codeRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 10, paddingVertical: 8, borderRadius: 10 },
-    code: { fontSize: 12, fontWeight: '800', letterSpacing: 1.5 },
-});
 
 // ══════════════════════════════════════════════════════════════════════════════
 // MAIN SCREEN
@@ -666,22 +615,6 @@ export default function DashboardScreen({ navigation }) {
                 </FadeUp> */}
 
                 {/* ── Exclusive Offers ─────────────────────────────────── */}
-                <FadeUp delay={300}>
-                    <View style={s.section}>
-                        <SectionHeader
-                            title="Exclusive Offers"
-                            C={C}
-                        />
-                        {/* Bleeds to screen edge */}
-                        <View style={s.offersBleed}>
-                            <ExclusiveOffers
-                                onOfferTap={goOfferTap}
-                                C={C}
-                                isDark={isDark}
-                            />
-                        </View>
-                    </View>
-                </FadeUp>
 
                 <View style={{ height: 100 }} />
             </ScrollView>

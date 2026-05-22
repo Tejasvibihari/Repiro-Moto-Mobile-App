@@ -64,7 +64,7 @@ export default function ProfileScreen({ navigation }) {
     const user = useSelector((state) => state.user.user);
     const totalBikes = useSelector((state) => state.user.totalBikes);
     const totalOrders = useSelector((state) => state.user.totalOrders);
-    console.log('User data in ProfileScreen:', { user, totalBikes, totalOrders });
+   
     // Use the custom hook to fetch profile data
     const { loading, error } = useFetchUserProfile(userId);
     const [showLogoutPopup, setShowLogoutPopup] = useState(false);

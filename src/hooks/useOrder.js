@@ -50,7 +50,7 @@ const useOrder = () => {
         try {
             const response = await axiosClient.get(`/api/admin/order/getorderbyid/${id}`);
             setCurrentOrder(response.data);
-            console.log(response.data);
+          
             return response.data;
         } catch (err) {
             const message = err.response?.data?.message || err.message;
@@ -68,7 +68,7 @@ const useOrder = () => {
      * @returns {Promise<Object>} - The updated order.
      */
     const cancelOrder = useCallback(async (id, reason) => {
-        console.log(id, reason)
+     
         if (!id) {
             setError('Order ID is required');
             return;
@@ -83,7 +83,7 @@ const useOrder = () => {
         try {
             const response = await axiosClient.put(`/api/admin/order/cancel/${id}`, { reason });
             const updatedOrder = response.data.order;
-            console.log(response.data)
+
             // Update orders list by replacing the cancelled order
             setOrders(prevOrders =>
                 prevOrders.map(order => order._id === id ? updatedOrder : order)
@@ -96,7 +96,7 @@ const useOrder = () => {
 
             return updatedOrder;
         } catch (err) {
-            console.log(err)
+
             const message = err.response?.data?.message || err.message;
             setError(message);
             throw err;
