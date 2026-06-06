@@ -1,11 +1,13 @@
 // src/screens/auth/RegisterScreen.js
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import {
     View, Text, ScrollView, KeyboardAvoidingView,
     StyleSheet, Animated, Platform, Dimensions, useColorScheme, Image,
 } from 'react-native';
 import { LightTheme, DarkTheme } from '../../styles/Theme';
 import RegisterForm from '../../components/auth/RegistrationForm';
+import axiosClient from '../../services/axiosClient';
+import Alert from '../../components/common/Alert';
 
 let LinearGradient = null;
 try { LinearGradient = require('expo-linear-gradient').LinearGradient; } catch (_) { }
@@ -21,6 +23,37 @@ export default function RegisterScreen({ navigation }) {
     const C = theme.colors;
     const isDark = scheme === 'dark';
     const insets = useSafeAreaInsets ? useSafeAreaInsets() : { top: 44, bottom: 34 };
+
+    const [loading, setLoading] = useState(false);
+    const [alert, setAlert] = useState({ visible: false, message: '', type: 'error' });
+
+    const showAlert = (message, type = 'error') => {
+        setAlert({ visible: true, message, type });
+        setTimeout(() => setAlert(prev => ({ ...prev, visible: false })), 5000);
+    };
+
+    const handleRegister = async (formData) => {
+        setLoading(true);
+        try {
+            const { referralCode, ...rest } = formData;
+            const payload = {
+                ...rest,
+                referredBy: referralCode || null,
+            };
+            console.log(payload)
+            const response = await axiosClient.post('/api/user/auth/user-sign-up', payload);
+            showAlert(response.data?.message || 'Registration successful! Redirecting to login...', 'success');
+            setTimeout(() => {
+                navigation?.navigate('Login');
+            }, 2000);
+        } catch (error) {
+            const message = error.response?.data?.message || 'Registration failed. Please try again.';
+            console.log(error);
+            showAlert(message, 'error');
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const contentOpacity = useRef(new Animated.Value(0)).current;
     const contentTransY = useRef(new Animated.Value(28)).current;
@@ -83,8 +116,13 @@ export default function RegisterScreen({ navigation }) {
                         <Text style={[s.welcomeSubtitle, { color: C.textSecondary }]}>Start your journey with precision care.</Text>
                     </Animated.View>
 
+                    {alert.visible && (
+                        <Alert type={alert.type} message={alert.message} visible={alert.visible}
+                            onDismiss={() => setAlert(prev => ({ ...prev, visible: false }))} autoDismiss={5000} />
+                    )}
+
                     <Animated.View style={{ opacity: contentOpacity, transform: [{ translateY: contentTransY }] }}>
-                        <RegisterForm onSubmit={(d) => console.log('Register →', d)} onLogin={() => navigation?.navigate('Login')} />
+                        <RegisterForm onSubmit={handleRegister} onLogin={() => navigation?.navigate('Login')} loading={loading} />
                     </Animated.View>
                 </ScrollView>
             </KeyboardAvoidingView>

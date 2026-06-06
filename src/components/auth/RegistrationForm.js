@@ -47,7 +47,6 @@ export default function RegisterForm({ onSubmit, onLogin, loading = false }) {
     const [businessType, setBusinessType] = useState('');
 
     const [errors, setErrors] = useState({});
-
     // Refs
     const lastNameRef = useRef(null);
     const phoneRef = useRef(null);
