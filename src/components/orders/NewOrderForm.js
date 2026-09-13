@@ -37,6 +37,7 @@ const QUICK_SERVICES = [
     { id: 'general_service', label: 'General Service', icon: 'construct-outline', color: '#4CAF8A' },
     { id: 'oil_change', label: 'Oil Change', icon: 'water-outline', color: '#E8A838' },
     { id: 'brake_repair', label: 'Brake Repair', icon: 'stop-circle-outline', color: '#E05454' },
+    { id: 'clutch_gear', label: 'Clutch & Gear Service', icon: 'settings-outline', color: '#9B59B6' }, // ← NEW
     { id: 'tyre_care', label: 'Tyre Care', icon: 'ellipse-outline', color: '#5B9BD5' },
     { id: 'engine_tune', label: 'Engine Tune-Up', icon: 'flash-outline', color: '#E07B54' },
     { id: 'chain_sprocket', label: 'Chain & Sprocket', icon: 'git-network-outline', color: '#7B68EE' },
@@ -1037,7 +1038,7 @@ function SummaryRow({ icon, label, value, theme, isMCI }) {
 }
 
 // ─── Main Form (updated schedule step) ───────────────────────────────────────
-export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 'Schedule Repair' }) {
+export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 'Schedule Repair', initialSelectedServiceId = null, }) {
     const mode = useSelector((s) => s.theme.mode);
     const theme = mode === 'dark' ? DarkTheme : LightTheme;
     const isDark = mode === 'dark';
@@ -1071,7 +1072,9 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
     const [bsStandard, setBsStandard] = useState('');
 
     // Service
-    const [selectedServices, setSelectedServices] = useState([]);
+    const [selectedServices, setSelectedServices] = useState(
+        initialSelectedServiceId ? [initialSelectedServiceId] : []
+    );
     const [otherServiceText, setOtherServiceText] = useState('');
     const [preferredDate, setPreferredDate] = useState('');
     const [preferredTime, setPreferredTime] = useState('');

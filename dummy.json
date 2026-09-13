@@ -1,0 +1,151 @@
+{
+    "__v": 2,
+    "_id": "6a3b6a5332f79449b1335aaf",
+    "address": "Block- A-2, Block- A-2, Road Number 5C, Sri Krishna Puri, Patna Division, Patna, Bihar, 800013",
+    "afterPhoto": null,
+    "amountPaid": 1190,
+    "arrivedAt": "2026-06-24T05:28:51.626Z",
+    "assignedDelivery": null,
+    "assignedMechanics": [
+        "Imtiyaz  Ahmad"
+    ],
+    "assignedVendor": null,
+    "balanceDue": 0,
+    "beforePhoto": null,
+    "bs": "BSVI",
+    "cancellationReason": null,
+    "cancelledAt": null,
+    "cc": "150",
+    "city": "PATNA",
+    "contactNo": "6205731150",
+    "coupon": null,
+    "createdAt": "2026-06-24T05:25:39.957Z",
+    "deliveryId": null,
+    "distanceFromCenter": 332.828181207245,
+    "email": "tejasvibihari2000@gmail.com",
+    "gstInvoice": {
+        "requested": false
+    },
+    "invoiceDate": "2026-06-24T05:35:09.748Z",
+    "isWithinServiceArea": true,
+    "issues": "",
+    "mechanicIds": [
+        {
+            "_id": "68a9757bf9b60ed11e9bab7b",
+            "firstName": "Imtiyaz ",
+            "lastName": "Ahmad",
+            "phone": "8651057012",
+            "profileImage": "/uploads/employees/profile/IMTI701253-profileImage.jpeg"
+        }
+    ],
+    "mechanicLocation": {
+        "coordinates": []
+    },
+    "modelName": "Pulsar 125",
+    "name": "Tejasvi Bihari",
+    "orderId": "ORD-240626-065",
+    "otherService": "",
+    "partsUsed": [
+        {
+            "_id": "6a3b6c8d32f79449b1335c38",
+            "discountPrice": 0,
+            "partName": "Break shoe",
+            "price": 240,
+            "quantity": 1
+        },
+        {
+            "_id": "6a3b6c8d32f79449b1335c39",
+            "discountPrice": 0,
+            "partName": "Engine oil",
+            "price": 450,
+            "quantity": 1
+        }
+    ],
+    "paymentDate": "2026-06-24T05:36:22.043Z",
+    "paymentMethod": "cash",
+    "paymentStatus": "paid",
+    "photosDeleted": true,
+    "photosScheduledDeleteAt": "2026-07-01T05:36:22.043Z",
+    "preferredDate": "2026-06-24T00:00:00.000Z",
+    "preferredTime": "11:00 AM",
+    "razorpay": {
+        "hadFailedAttempt": false,
+        "linkCreatedAt": null,
+        "orderId": null,
+        "paymentId": null,
+        "paymentLinkId": null,
+        "paymentLinkUrl": null,
+        "pendingOriginalPayable": 0,
+        "pendingReferralToApply": 0,
+        "receiptId": null,
+        "signature": null,
+        "status": null,
+        "webhookPayload": null
+    },
+    "referralProcessed": false,
+    "reminderSent": false,
+    "selectedBrand": "Bajaj Auto",
+    "selectedModel": "Pulsar 125",
+    "serviceProvided": [
+        {
+            "_id": "6a3b6c8d32f79449b1335c37",
+            "discountPrice": 0,
+            "price": 500,
+            "quantity": 1,
+            "serviceName": "REPAIRING LABOUR"
+        }
+    ],
+    "serviceType": "Schedule Repair",
+    "services": [
+        "General Servicing",
+        "General Service"
+    ],
+    "status": "Completed",
+    "total": {
+        "baseAmount": 1190,
+        "cgst": 0,
+        "cgstRate": 0,
+        "discount": 0,
+        "discountType": "Flat",
+        "finalPayable": 1190,
+        "referralDiscount": 0,
+        "sgst": 0,
+        "sgstRate": 0,
+        "subTotal": 1190,
+        "total": 1190
+    },
+    "updatedAt": "2026-07-01T06:30:00.053Z",
+    "userId": {
+        "_id": "68ad67dff9b60ed11e9bd456",
+        "accountType": "personal",
+        "email": "tejasvibihari2000@gmail.com",
+        "firstName": "Tejasvi",
+        "lastName": "Bihari",
+        "phone": "6205731150",
+        "referralAmount": 0
+    },
+    "userLocation": {
+        "coordinates": [
+            85.1111965,
+            25.6214658
+        ],
+        "type": "Point"
+    },
+    "vendorId": null,
+    "workCompleteOtp": {
+        "attempts": 0,
+        "code": null,
+        "expiresAt": null,
+        "pendingPhotoPath": null,
+        "verified": true
+    },
+    "workCompletedAt": "2026-06-24T05:33:30.316Z",
+    "workStartOtp": {
+        "attempts": 0,
+        "code": null,
+        "expiresAt": null,
+        "pendingPhotoPath": null,
+        "verified": true
+    },
+    "workStartedAt": "2026-06-24T05:29:29.023Z"
+}

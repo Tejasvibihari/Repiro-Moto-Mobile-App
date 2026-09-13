@@ -15,9 +15,8 @@ export default function NewOrderScreen() {
     const route = useRoute();                                          // ← add this
     const mode = useSelector((s) => s.theme.mode);
     const theme = mode === 'dark' ? DarkTheme : LightTheme;
-
-    // Pull serviceType from nav params, default to 'Schedule Repair'
-    const initialServiceType = route.params?.serviceType ?? 'Schedule Repair';  // ← add this
+    const initialServiceType = route.params?.serviceType ?? 'Schedule Repair';
+    const initialSelectedServiceId = route.params?.preselectedServiceId ?? null;   // ← add this
 
     const [loading, setLoading] = useState(false);
     const [successPopup, setSuccessPopup] = useState(false);
@@ -43,7 +42,8 @@ export default function NewOrderScreen() {
                 <NewOrderForm
                     onSubmit={handleSubmit}
                     onCancel={() => navigation.goBack()}
-                    initialServiceType={initialServiceType}   // ← pass it down
+                    initialServiceType={initialServiceType}
+                    initialSelectedServiceId={initialSelectedServiceId}   // ← pass it down
                 />
             </ScreenWrapper>
 

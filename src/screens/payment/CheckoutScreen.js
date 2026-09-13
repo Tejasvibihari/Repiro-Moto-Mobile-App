@@ -30,11 +30,11 @@ try {
     RazorpayCheckout = require('react-native-razorpay').default;
 } catch (_) { }
 
-const RAZORPAY_KEY_ID =
-    Constants.expoConfig?.extra?.razorpayKeyId ??
-    Constants.manifest?.extra?.razorpayKeyId ??
-    '';
-
+// const RAZORPAY_KEY_ID =
+//     Constants.expoConfig?.extra?.razorpayKeyId ??
+//     Constants.manifest?.extra?.razorpayKeyId ??
+//     '';
+const RAZORPAY_KEY_ID = 'rzp_live_SsRQTgiP5VS9yl';
 const { width: W } = Dimensions.get('window');
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -861,12 +861,13 @@ async function initiateRazorpay({ order, useReferral = false }) {
         },
         theme: { color: '#e2a731' },
     };
+    console.log('RAZORPAY_OPTIONS_DEBUG', JSON.stringify(options));
 
     try {
         const paymentData = await RazorpayCheckout.open(options);
         return { success: true, data: paymentData };
     } catch (err) {
-        // Code 2 = user dismissed — not an error
+        console.log('RAZORPAY_ERROR_RAW', JSON.stringify(err));
         if (err?.code === 2) return { success: false, dismissed: true };
         return {
             success: false,

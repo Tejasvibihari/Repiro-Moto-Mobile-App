@@ -33,6 +33,9 @@ import TabScreenWrapper from '../../components/common/TabScreenWrapper';
 import useFetchBike from '../../hooks/useBikes';
 import useFetchOrder from '../../hooks/useOrder';
 import { getImageUrl } from '../../utils/imageUtils';
+import ServiceDetailSheet from '../../components/dashboard/ServiceDetailSheet.js';
+import SERVICE_DETAILS from '../../data/serviceDetails.js';
+
 
 const { width: W } = Dimensions.get('window');
 
@@ -318,11 +321,19 @@ const SERVICES = [
     { id: '1', label: 'General Service', sub: 'Full bike diagnostic', icon: 'cog-outline', color: '#E2A731' },
     { id: '2', label: 'Oil Change', sub: 'Synthetic & Mineral', icon: 'oil', color: '#5B8CFF' },
     { id: '3', label: 'Brake Repair', sub: 'Pad replacement', icon: 'car-brake-alert', color: '#FF6B6B' },
-    { id: '4', label: 'Tyre Care', sub: 'Alignment & Pressure', icon: 'tire', color: '#2ECC9A' },
+    { id: 'clutch-gear', label: 'Clutch & Gear Service', sub: 'Smooth shifting & control', icon: 'car-clutch', color: '#2ECC9A' },
     { id: '5', label: 'Engine Tune-up', sub: 'Performance boost', icon: 'engine-outline', color: '#E2A731' },
     { id: '6', label: 'Chain & Sprocket', sub: 'Drive train service', icon: 'link-variant', color: '#5B8CFF' },
 ];
-
+// Maps Premium Services grid ids -> NewOrderForm's QUICK_SERVICES ids
+const DASHBOARD_TO_ORDER_SERVICE_ID = {
+    '1': 'general_service',
+    '2': 'oil_change',
+    '3': 'brake_repair',
+    'clutch-gear': 'clutch_gear',
+    '5': 'engine_tune',
+    '6': 'chain_sprocket',
+};
 function ServicesGrid({ onServiceTap, C, isDark }) {
     const rows = [];
     for (let i = 0; i < SERVICES.length; i += 2) {
@@ -460,7 +471,8 @@ export default function DashboardScreen({ navigation }) {
     const [searchText, setSearchText] = useState('');
     const [refreshing, setRefreshing] = useState(false);
     const [searchFocus, setSearchFocus] = useState(false);
-
+    const [selectedService, setSelectedService] = useState(null);
+    const [serviceSheetVisible, setServiceSheetVisible] = useState(false);
     const { bikes, refetch: refetchBikes } = useFetchBike?.() ?? { bikes: [], refetch: async () => { } };
     const { orders, refetch: refetchOrders } = useFetchOrder?.() ?? { orders: [], refetch: async () => { } };
 
@@ -486,8 +498,21 @@ export default function DashboardScreen({ navigation }) {
     const goAddBike = () => navigation?.navigate?.('AddBike');
     const goMyBikes = () => navigation?.navigate?.('MyBikes');
     const goBikeTap = (b) => navigation?.navigate?.('BikeDetail', { bikeId: b._id });
-    const goServiceTap = (s) => navigation?.navigate?.('NewOrder', { serviceType: 'Schedule Repair', service: s.label });
-    const goViewMap = () => navigation?.navigate?.('NearbyMap');
+    const openServiceSheet = (s) => {
+        const details = SERVICE_DETAILS[s.id] ?? { ...s, ifSkipped: [], benefits: [], included: [] };
+        setSelectedService({ ...details, id: s.id }); // ← id add ki, taaki Book Now ko pata rahe konsi service hai
+        setServiceSheetVisible(true);
+    };
+
+    const closeServiceSheet = () => setServiceSheetVisible(false);
+
+    const handleBookFromSheet = (service) => {
+        setServiceSheetVisible(false);
+        navigation?.navigate?.('NewOrder', {
+            serviceType: 'Schedule Repair',
+            preselectedServiceId: DASHBOARD_TO_ORDER_SERVICE_ID[service.id] ?? null,
+        });
+    };
     const goCenterTap = () => { };
     const goOfferTap = (o) => navigation?.navigate?.('OfferDetail', { code: o.code });
     const goSearch = () => { };
@@ -585,11 +610,11 @@ export default function DashboardScreen({ navigation }) {
                 <FadeUp delay={220}>
                     <View style={s.section}>
                         <SectionHeader
-                            title="Premium Services"
+                            title="Doorstep Services"
                             C={C}
                         />
                         <ServicesGrid
-                            onServiceTap={goServiceTap}
+                            onServiceTap={openServiceSheet}
                             C={C}
                             isDark={isDark}
                         />
@@ -617,7 +642,16 @@ export default function DashboardScreen({ navigation }) {
                 {/* ── Exclusive Offers ─────────────────────────────────── */}
 
                 <View style={{ height: 100 }} />
+
             </ScrollView>
+            <ServiceDetailSheet
+                visible={serviceSheetVisible}
+                service={selectedService}
+                onClose={closeServiceSheet}
+                onBook={handleBookFromSheet}
+                C={C}
+                isDark={isDark}
+            />
         </TabScreenWrapper>
     );
 }

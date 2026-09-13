@@ -31,7 +31,7 @@ import axiosClient from '../../services/axiosClient';
 import { getImageUrl } from '../../utils/imageUtils';
 import MechanicRatingCard from '../../components/orders/MechanicRatingCard';
 import OrderSupportCard from '../../components/orders/OrderSupportCard';
-
+import { shareInvoicePdf, downloadInvoicePdf } from '../../utils/invoiceUtils';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -916,6 +916,21 @@ function ActionButtons({ order, onCancel, onViewInvoice, onPay, C, isDark }) {
                     <Text style={ab.payLabel}>Pay Now — {fmtCurrency(finalPayable)}</Text>
                 </TouchableOpacity>
             )}
+            {
+                isInvoiceGenerated && (
+                    <TouchableOpacity
+                        style={[ab.btn, {
+                            backgroundColor: isDark ? '#1C3D2E' : '#E6F7EC',
+                            borderColor: '#2ECC9A',
+                        }]}
+                        onPress={onViewInvoice}
+                        activeOpacity={0.82}
+                    >
+                        <MaterialCommunityIcons name="file-document-outline" size={15} color="#2ECC9A" />
+                        <Text style={[ab.btnLabel, { color: '#2ECC9A' }]}>View Invoice</Text>
+                    </TouchableOpacity>
+                )
+            }
 
             {showViewInvoice && (
                 <TouchableOpacity
@@ -1128,11 +1143,34 @@ const iss = StyleSheet.create({
 // ─── Invoice Modal (drop-in replacement inside OrderDetailScreen.js) ──────────
 // Replace the existing InvoiceModal function and invM StyleSheet with this file.
 
-function InvoiceModal({ visible, invoice, onClose, theme, loading }) {
+function InvoiceModal({ visible, invoice, order, onClose, theme, loading }) {
     const isDark = theme.mode === 'dark';
     const C = theme.colors;
+    const [actionLoading, setActionLoading] = useState(null);
     if (!visible) return null;
+    const handleDownload = async () => {
+        if (!invoice || actionLoading) return;
+        setActionLoading('download');
+        try {
+            await downloadInvoicePdf(invoice, order);
+        } catch (e) {
+            if (__DEV__) console.warn('Invoice download failed:', e);
+        } finally {
+            setActionLoading(null); // ALWAYS runs, even if the above throws or times out
+        }
+    };
 
+    const handleShare = async () => {
+        if (!invoice || actionLoading) return;
+        setActionLoading('share');
+        try {
+            await shareInvoicePdf(invoice, order);
+        } catch (e) {
+            // already alerted inside shareInvoicePdf — just make sure we don't get stuck
+        } finally {
+            setActionLoading(null); // ALWAYS runs, even if the above throws or times out
+        }
+    };
     // ── Helpers ───────────────────────────────────────────────────────────────
     const safeNum = (v) => {
         if (v == null) return 0;
@@ -1182,9 +1220,37 @@ function InvoiceModal({ visible, invoice, onClose, theme, loading }) {
                 {/* ── Header ───────────────────────────────────────────────── */}
                 <View style={[invM.header, { borderBottomColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.07)' }]}>
                     <Text style={[invM.headerTitle, { color: C.textPrimary }]}>Invoice</Text>
-                    <TouchableOpacity onPress={onClose} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-                        <Ionicons name="close" size={24} color={C.textMuted} />
-                    </TouchableOpacity>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+                        {!loading && invoice && (
+                            <>
+                                <TouchableOpacity
+                                    onPress={handleDownload}
+                                    disabled={!!actionLoading}
+                                    hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+                                >
+                                    {actionLoading === 'download' ? (
+                                        <ActivityIndicator size="small" color={C.primary} />
+                                    ) : (
+                                        <MaterialCommunityIcons name="download-outline" size={22} color={C.textPrimary} />
+                                    )}
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    onPress={handleShare}
+                                    disabled={!!actionLoading}
+                                    hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }}
+                                >
+                                    {actionLoading === 'share' ? (
+                                        <ActivityIndicator size="small" color={C.primary} />
+                                    ) : (
+                                        <MaterialCommunityIcons name="share-variant-outline" size={20} color={C.textPrimary} />
+                                    )}
+                                </TouchableOpacity>
+                            </>
+                        )}
+                        <TouchableOpacity onPress={onClose} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+                            <Ionicons name="close" size={24} color={C.textMuted} />
+                        </TouchableOpacity>
+                    </View>
                 </View>
 
                 {/* ── Loading / empty ───────────────────────────────────────── */}
@@ -1820,6 +1886,7 @@ export default function OrderDetailScreen({ route, navigation }) {
             <InvoiceModal
                 visible={invoiceModalVisible}
                 invoice={invoiceData}
+                order={order}
                 onClose={() => { setInvoiceModalVisible(false); setInvoiceData(null); }}
                 theme={{ colors: C, mode }}
                 loading={invoiceLoading}
