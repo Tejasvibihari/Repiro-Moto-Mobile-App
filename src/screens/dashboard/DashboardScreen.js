@@ -3,12 +3,13 @@
 // Home Dashboard sections:
 //   1. Greeting header + notification bell + theme toggle
 //   2. Search bar
-//   3. Quick Actions: Book Service + Emergency Repair
-//   4. Active / Recent Order Card (most recent order)
-//   5. Your Garage (bikes list + Add New Bike)
-//   6. Premium Services grid
-//   7. Nearby Service Centers
-//   8. Exclusive Offers (horizontal scroll)
+//   3. Offer/Announcement Banner Carousel (auto-slide + swipeable)
+//   4. Quick Actions: Book Service + Emergency Repair (compact rectangular buttons)
+//   5. Active / Recent Order Card (most recent order)
+//   6. Your Garage (bikes list + Add New Bike)
+//   7. Premium Services grid
+//   8. Nearby Service Centers
+//   9. Exclusive Offers (horizontal scroll)
 
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import {
@@ -32,6 +33,7 @@ import { LightTheme, DarkTheme } from '../../styles/Theme';
 import TabScreenWrapper from '../../components/common/TabScreenWrapper';
 import useFetchBike from '../../hooks/useBikes';
 import useFetchOrder from '../../hooks/useOrder';
+import axiosClient from '../../services/axiosClient';
 import { getImageUrl } from '../../utils/imageUtils';
 import ServiceDetailSheet from '../../components/dashboard/ServiceDetailSheet.js';
 import SERVICE_DETAILS from '../../data/serviceDetails.js';
@@ -85,14 +87,137 @@ const sh = StyleSheet.create({
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-// 1. QUICK ACTIONS
+// BANNER CAROUSEL — auto-slides on a timer, and the user can swipe it manually.
+// Aspect ratio matches the admin console's crop (16:9), so images always fit
+// without stretching. Fetches /api/banner/active (admin-curated, ordered, max 5).
+// ══════════════════════════════════════════════════════════════════════════════
+const BANNER_H_PADDING = 20;
+const BANNER_CARD_WIDTH = W - BANNER_H_PADDING * 2; // visual card width (for aspect ratio)
+const BANNER_HEIGHT = Math.round((BANNER_CARD_WIDTH * 9) / 16); // 16:9, matches admin crop
+const BANNER_AUTO_SLIDE_MS = 4000;
+// The paging "pitch" — the distance the list scrolls per page — MUST be the
+// full screen width, because that's the actual footprint of each FlatList item.
+const BANNER_PAGE_WIDTH = W;
+
+function BannerCarousel({ banners, onBannerPress, C, isDark }) {
+    const listRef = useRef(null);
+    const indexRef = useRef(0);
+    const [activeIndex, setActiveIndex] = useState(0);
+    const timerRef = useRef(null);
+
+    const stopAutoSlide = useCallback(() => {
+        if (timerRef.current) {
+            clearInterval(timerRef.current);
+            timerRef.current = null;
+        }
+    }, []);
+
+    const startAutoSlide = useCallback(() => {
+        stopAutoSlide();
+        if (!banners || banners.length <= 1) return;
+        timerRef.current = setInterval(() => {
+            const next = (indexRef.current + 1) % banners.length;
+            listRef.current?.scrollToOffset({ offset: next * BANNER_PAGE_WIDTH, animated: true });
+            indexRef.current = next;
+            setActiveIndex(next);
+        }, BANNER_AUTO_SLIDE_MS);
+    }, [banners, stopAutoSlide]);
+
+    useEffect(() => {
+        indexRef.current = 0;
+        setActiveIndex(0);
+        listRef.current?.scrollToOffset({ offset: 0, animated: false });
+        startAutoSlide();
+        return stopAutoSlide;
+    }, [banners, startAutoSlide, stopAutoSlide]);
+
+    const handleMomentumScrollEnd = (e) => {
+        const idx = Math.round(e.nativeEvent.contentOffset.x / BANNER_PAGE_WIDTH);
+        indexRef.current = idx;
+        setActiveIndex(idx);
+    };
+
+    if (!banners || banners.length === 0) return null;
+
+    return (
+        <View style={bc.wrap}>
+            <FlatList
+                ref={listRef}
+                data={banners}
+                keyExtractor={(item) => item._id}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                snapToInterval={BANNER_PAGE_WIDTH}
+                decelerationRate="fast"
+                bounces={false}
+                onScrollBeginDrag={stopAutoSlide}
+                onMomentumScrollEnd={(e) => {
+                    handleMomentumScrollEnd(e);
+                    startAutoSlide();
+                }}
+                renderItem={({ item }) => (
+                    // Item is EXACTLY the full screen width — this is the true
+                    // paging unit. The visual inset/padding goes on the inner
+                    // TouchableOpacity, not on this wrapper, so it never affects
+                    // how much of the neighbor peeks in.
+                    <View style={{ width: BANNER_PAGE_WIDTH, paddingHorizontal: BANNER_H_PADDING }}>
+                        <TouchableOpacity
+                            activeOpacity={item.link ? 0.9 : 1}
+                            onPress={() => onBannerPress(item)}
+                            style={[
+                                bc.slide,
+                                { height: BANNER_HEIGHT, backgroundColor: isDark ? '#1C1A14' : '#F5F2EC' },
+                            ]}
+                        >
+                            <Image source={{ uri: getImageUrl(item.image) }} style={bc.image} resizeMode="cover" />
+                        </TouchableOpacity>
+                    </View>
+                )}
+            />
+
+            {banners.length > 1 && (
+                <View style={bc.dotsRow}>
+                    {banners.map((_, i) => (
+                        <View
+                            key={i}
+                            style={[
+                                bc.dot,
+                                {
+                                    width: i === activeIndex ? 16 : 6,
+                                    backgroundColor: i === activeIndex ? C.primary : (isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.15)'),
+                                },
+                            ]}
+                        />
+                    ))}
+                </View>
+            )}
+        </View>
+    );
+}
+const bc = StyleSheet.create({
+    wrap: { marginBottom: 20 },
+    slide: {
+        borderRadius: 18,
+        overflow: 'hidden',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 10,
+        elevation: 4,
+    },
+    image: { width: '100%', height: '100%' },
+    dotsRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, marginTop: 10 },
+    dot: { height: 6, borderRadius: 3 },
+});
+// ══════════════════════════════════════════════════════════════════════════════
+// 3. QUICK ACTIONS — compact rectangular buttons (not large square cards)
 // ══════════════════════════════════════════════════════════════════════════════
 function QuickActions({ onBookService, onEmergency, C, isDark }) {
     const actions = [
         {
             key: 'book',
             label: 'BOOK SERVICE',
-            sub: 'Schedule a visit',
             icon: 'tools',
             onPress: onBookService,
             accent: C.primary,
@@ -101,7 +226,6 @@ function QuickActions({ onBookService, onEmergency, C, isDark }) {
         {
             key: 'emergency',
             label: 'EMERGENCY REPAIR',
-            sub: 'Quick roadside help',
             icon: 'alert-octagon',
             onPress: onEmergency,
             accent: '#FF6B6B',
@@ -114,15 +238,16 @@ function QuickActions({ onBookService, onEmergency, C, isDark }) {
             {actions.map((a) => (
                 <TouchableOpacity
                     key={a.key}
-                    style={[qa.card, { backgroundColor: a.accent, shadowColor: a.accent }]}
+                    style={[qa.btn, { backgroundColor: a.accent, shadowColor: a.accent }]}
                     onPress={a.onPress}
                     activeOpacity={0.82}
                 >
                     <View style={[qa.iconWrap, { backgroundColor: 'rgba(0,0,0,0.15)' }]}>
-                        <MaterialCommunityIcons name={a.icon} size={26} color={a.textColor} />
+                        <MaterialCommunityIcons name={a.icon} size={17} color={a.textColor} />
                     </View>
-                    <Text style={[qa.label, { color: a.textColor }]}>{a.label}</Text>
-                    <Text style={[qa.sub, { color: a.textColor, opacity: 0.75 }]}>{a.sub}</Text>
+                    <Text style={[qa.label, { color: a.textColor }]} numberOfLines={1}>
+                        {a.label}
+                    </Text>
                 </TouchableOpacity>
             ))}
         </View>
@@ -130,17 +255,25 @@ function QuickActions({ onBookService, onEmergency, C, isDark }) {
 }
 const qa = StyleSheet.create({
     row: { flexDirection: 'row', gap: 12 },
-    card: {
-        flex: 1, borderRadius: 18, padding: 18, gap: 10,
-        shadowOffset: { width: 0, height: 8 }, shadowOpacity: 0.3, shadowRadius: 16, elevation: 8,
+    btn: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 9,
+        borderRadius: 14,
+        paddingVertical: 12,
+        paddingHorizontal: 14,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.22,
+        shadowRadius: 8,
+        elevation: 5,
     },
-    iconWrap: { width: 46, height: 46, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-    label: { fontSize: 13, fontWeight: '900', letterSpacing: 1.2, textTransform: 'uppercase', marginTop: 4 },
-    sub: { fontSize: 11, letterSpacing: 0.1 },
+    iconWrap: { width: 30, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+    label: { fontSize: 11.5, fontWeight: '800', letterSpacing: 0.4, flexShrink: 1 },
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-// 2. ACTIVE / RECENT ORDER CARD
+// 4. ACTIVE / RECENT ORDER CARD
 // ══════════════════════════════════════════════════════════════════════════════
 const ORDER_STATUS_CFG = {
     'pending': { color: '#E2A731', icon: 'clock-outline', label: 'Pending' },
@@ -246,7 +379,7 @@ const oc = StyleSheet.create({
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-// 3. YOUR GARAGE
+// 5. YOUR GARAGE
 // ══════════════════════════════════════════════════════════════════════════════
 function GarageSection({ bikes, onAddBike, onBikeTap, C, isDark }) {
     if (bikes.length === 0) {
@@ -315,7 +448,7 @@ const gs = StyleSheet.create({
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-// 4. PREMIUM SERVICES GRID
+// 6. PREMIUM SERVICES GRID
 // ══════════════════════════════════════════════════════════════════════════════
 const SERVICES = [
     { id: '1', label: 'General Service', sub: 'Full bike diagnostic', icon: 'cog-outline', color: '#E2A731' },
@@ -375,7 +508,7 @@ const sg = StyleSheet.create({
 });
 
 // ══════════════════════════════════════════════════════════════════════════════
-// 5. NEARBY SERVICE CENTERS
+// 7. NEARBY SERVICE CENTERS
 // ══════════════════════════════════════════════════════════════════════════════
 const CENTERS = [
     { id: '1', name: 'Repairs Central', distance: '2.4 km', status: 'OPEN NOW', statusColor: '#2ECC9A' },
@@ -473,6 +606,7 @@ export default function DashboardScreen({ navigation }) {
     const [searchFocus, setSearchFocus] = useState(false);
     const [selectedService, setSelectedService] = useState(null);
     const [serviceSheetVisible, setServiceSheetVisible] = useState(false);
+    const [banners, setBanners] = useState([]);
     const { bikes, refetch: refetchBikes } = useFetchBike?.() ?? { bikes: [], refetch: async () => { } };
     const { orders, refetch: refetchOrders } = useFetchOrder?.() ?? { orders: [], refetch: async () => { } };
 
@@ -481,11 +615,25 @@ export default function DashboardScreen({ navigation }) {
         .filter((o) => (o.status ?? '').toLowerCase() !== 'cancelled')
         .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))[0] ?? null;
 
+    // ── Banners: admin-curated, ordered, capped at 5 on the backend ──────────
+    const fetchBanners = useCallback(async () => {
+        try {
+            const res = await axiosClient.get('/api/admin/banner/active');
+            setBanners(res.data?.banners || []);
+        } catch (err) {
+            console.log('Failed to fetch banners:', err?.message);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchBanners();
+    }, [fetchBanners]);
+
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
-        await Promise.all([refetchBikes(), refetchOrders()]);
+        await Promise.all([refetchBikes(), refetchOrders(), fetchBanners()]);
         setRefreshing(false);
-    }, [refetchBikes, refetchOrders]);
+    }, [refetchBikes, refetchOrders, fetchBanners]);
 
     const firstName = user?.firstName ?? 'Rider';
 
@@ -516,6 +664,17 @@ export default function DashboardScreen({ navigation }) {
     const goCenterTap = () => { };
     const goOfferTap = (o) => navigation?.navigate?.('OfferDetail', { code: o.code });
     const goSearch = () => { };
+
+    // Banner tap: open external links directly, treat anything else as an
+    // in-app route name so admins can point a banner at a screen too.
+    const goBannerTap = (banner) => {
+        if (!banner?.link) return;
+        if (/^https?:\/\//i.test(banner.link)) {
+            Linking.openURL(banner.link).catch(() => { });
+        } else {
+            navigation?.navigate?.(banner.link);
+        }
+    };
 
     const s = makeStyles(C, isDark);
 
@@ -557,14 +716,28 @@ export default function DashboardScreen({ navigation }) {
                     </TouchableOpacity>
                 </FadeUp> */}
 
+                {/* ── Offer / Announcement Banners ─────────────────────── */}
+                {banners.length > 0 && (
+                    <FadeUp delay={60}>
+                        <BannerCarousel
+                            banners={banners}
+                            onBannerPress={goBannerTap}
+                            C={C}
+                            isDark={isDark}
+                        />
+                    </FadeUp>
+                )}
+
                 {/* ── Quick Actions ────────────────────────────────────── */}
                 <FadeUp delay={100}>
-                    <QuickActions
-                        onBookService={goBookService}
-                        onEmergency={goEmergency}
-                        C={C}
-                        isDark={isDark}
-                    />
+                    <View style={s.section}>
+                        <QuickActions
+                            onBookService={goBookService}
+                            onEmergency={goEmergency}
+                            C={C}
+                            isDark={isDark}
+                        />
+                    </View>
                 </FadeUp>
 
                 {/* ── Recent / Active Order ────────────────────────────── */}
