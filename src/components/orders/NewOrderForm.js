@@ -21,6 +21,7 @@ import { LightTheme, DarkTheme } from '../../styles/Theme';
 import axiosClient from '../../services/axiosClient';
 import Alert from '../../components/common/Alert';
 import useBike from '../../hooks/useBikes';
+import useCoupon from '../../hooks/useCoupon';
 import MapView, { PROVIDER_GOOGLE } from 'react-native-maps';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -1081,6 +1082,14 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
     const [issue, setIssue] = useState('');
     const [serviceType, setServiceType] = useState(initialServiceType);
 
+    // Coupon (optional, review step) — the code is only ever included in the
+    // booking payload once verified, since the backend rejects the entire
+    // booking if an unverified/invalid code is sent.
+    const { verifying: couponVerifying, verifyCoupon } = useCoupon();
+    const [couponCode, setCouponCode] = useState('');
+    const [appliedCoupon, setAppliedCoupon] = useState(null); // verified coupon summary
+    const [couponError, setCouponError] = useState(null);
+
     // Clear CC error when user types
     useEffect(() => { if (cc.trim()) setCcError(false); }, [cc]);
 
@@ -1194,6 +1203,26 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
         goNext();
     };
 
+    // ─── Coupon verify (review step) ────────────────────────────────────────
+    const handleVerifyCoupon = async () => {
+        const trimmed = couponCode.trim();
+        if (!trimmed) return;
+        setCouponError(null);
+        setAppliedCoupon(null);
+        try {
+            const res = await verifyCoupon({ code: trimmed, serviceType });
+            setAppliedCoupon(res.coupon);
+        } catch (err) {
+            setCouponError(err.message);
+        }
+    };
+
+    const handleRemoveCoupon = () => {
+        setAppliedCoupon(null);
+        setCouponCode('');
+        setCouponError(null);
+    };
+
     const handleSubmit = () => {
         if (!coords) { setAlert({ type: 'error', message: 'Location is required.' }); return; }
         if (!city) { setAlert({ type: 'error', message: 'Could not determine city from location. Please try again.' }); return; }
@@ -1229,6 +1258,9 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
             userId: user?._id,
             status: 'Pending',
             referralProcessed: false,
+            // Only ever included once verified — an invalid/unverified code
+            // would cause the backend to reject the whole booking.
+            ...(appliedCoupon ? { coupon: appliedCoupon.code } : {}),
         };
         onSubmit(payload);
     };
@@ -1404,6 +1436,74 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
                                     <SummaryRow icon="calendar-outline" label="Schedule" value={`${preferredDate} · ${preferredTime}`} theme={theme} />
                                 </View>
                             </View>
+
+                            {/* ── Coupon (optional) ─────────────────────────────────────── */}
+                            <Text style={[labelStyle(theme), { marginBottom: 10 }]}>
+                                Have a coupon?{' '}
+                                <Text style={{ color: theme.colors.textMuted, fontWeight: '500', textTransform: 'none' }}>(optional)</Text>
+                            </Text>
+                            {appliedCoupon ? (
+                                <View style={{
+                                    flexDirection: 'row', alignItems: 'center', gap: 10,
+                                    borderRadius: 14, borderWidth: 1, padding: 14, marginBottom: 24,
+                                    borderColor: 'rgba(46,204,154,0.3)',
+                                    backgroundColor: isDark ? '#1A2A1A' : '#E6F7EC',
+                                }}>
+                                    <MaterialCommunityIcons name="ticket-percent" size={20} color="#2ECC9A" />
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={{ fontSize: 14, fontWeight: '800', color: theme.colors.textPrimary, letterSpacing: 0.5 }}>
+                                            {appliedCoupon.code}
+                                        </Text>
+                                        <Text style={{ fontSize: 11, color: theme.colors.textMuted, marginTop: 2 }}>
+                                            {appliedCoupon.discountType === 'percentage'
+                                                ? `${appliedCoupon.discountValue}% off`
+                                                : `₹${appliedCoupon.discountValue} off`}
+                                            {' · will apply once your invoice is generated'}
+                                        </Text>
+                                    </View>
+                                    <TouchableOpacity onPress={handleRemoveCoupon} style={{ padding: 4 }}>
+                                        <MaterialCommunityIcons name="close-circle-outline" size={20} color={theme.colors.textMuted} />
+                                    </TouchableOpacity>
+                                </View>
+                            ) : (
+                                <View style={{ marginBottom: 8 }}>
+                                    <View style={{
+                                        flexDirection: 'row', alignItems: 'center', gap: 8,
+                                        borderWidth: 1.5, borderRadius: 14, paddingHorizontal: 14,
+                                        borderColor: theme.colors.border,
+                                        backgroundColor: isDark ? theme.colors.surfaceLow : '#FFF',
+                                    }}>
+                                        <MaterialCommunityIcons name="ticket-outline" size={18} color={theme.colors.textMuted} />
+                                        <TextInput
+                                            value={couponCode}
+                                            onChangeText={(t) => { setCouponCode(t.toUpperCase()); setCouponError(null); }}
+                                            placeholder="Enter coupon code"
+                                            placeholderTextColor={theme.colors.textMuted}
+                                            autoCapitalize="characters"
+                                            autoCorrect={false}
+                                            style={{ flex: 1, fontSize: 14, fontWeight: '600', paddingVertical: 14, letterSpacing: 0.5, color: theme.colors.textPrimary }}
+                                        />
+                                        <TouchableOpacity
+                                            onPress={handleVerifyCoupon}
+                                            disabled={couponVerifying || !couponCode.trim()}
+                                            style={{ paddingHorizontal: 6, paddingVertical: 8, opacity: couponVerifying || !couponCode.trim() ? 0.5 : 1 }}
+                                        >
+                                            {couponVerifying ? (
+                                                <ActivityIndicator size="small" color={theme.colors.primary} />
+                                            ) : (
+                                                <Text style={{ fontSize: 12, fontWeight: '800', color: theme.colors.primary, letterSpacing: 0.5 }}>Apply</Text>
+                                            )}
+                                        </TouchableOpacity>
+                                    </View>
+                                    {couponError && (
+                                        <Text style={{ fontSize: 12, fontWeight: '600', color: '#FF6B6B', marginTop: 6 }}>
+                                            {couponError}
+                                        </Text>
+                                    )}
+                                </View>
+                            )}
+                            <View style={{ height: 14 }} />
+
                             <Text style={[labelStyle(theme), { marginBottom: 10 }]}>
                                 Any specific issue?{' '}
                                 <Text style={{ color: theme.colors.textMuted, fontWeight: '500', textTransform: 'none' }}>(optional)</Text>

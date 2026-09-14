@@ -25,6 +25,7 @@ import { LightTheme, DarkTheme } from '../../styles/Theme';
 import ScreenWrapper from '../../components/common/ScreenWrapper';
 import Loader from '../../components/common/Loader';
 import { MechanicCard, VendorCard } from '../../components/orders/MechanicCard';
+import CouponCard from '../../components/orders/CouponCard';
 import useOrder from '../../hooks/useOrder';
 import PopUp from '../../components/common/PopUp';
 import axiosClient from '../../services/axiosClient';
@@ -62,6 +63,12 @@ const STATUS_STEPS = [
         desc: 'Work is currently in progress',
     },
     {
+        key: 'Completion Requested',
+        label: 'Completion Requested',
+        icon: 'progress-check',
+        desc: 'Mechanic has requested completion, awaiting confirmation',
+    },
+    {
         key: 'Work Completed',
         label: 'Work Done',               // ← clarified to avoid confusion with final "Completed"
         icon: 'check-circle-outline',
@@ -86,6 +93,7 @@ const STATUS_COLORS = {
     'Mechanic Assigned': { bg: 'rgba(91,140,255,0.15)', text: '#5B8CFF', dot: '#5B8CFF' },
     'Mechanic Arrived': { bg: 'rgba(140,91,255,0.15)', text: '#8C5BFF', dot: '#8C5BFF' },
     'In Progress': { bg: 'rgba(255,165,0,0.15)', text: '#FFA500', dot: '#FFA500' },
+    'Completion Requested': { bg: 'rgba(255,107,107,0.12)', text: '#FF6B6B', dot: '#FF6B6B' },
     'Work Completed': { bg: 'rgba(46,204,154,0.12)', text: '#2ECC9A', dot: '#2ECC9A' },
     'Invoice Generated': { bg: 'rgba(91,140,255,0.15)', text: '#5B8CFF', dot: '#5B8CFF' },
     'Completed': { bg: 'rgba(46,204,154,0.15)', text: '#2ECC9A', dot: '#2ECC9A' },
@@ -347,7 +355,7 @@ const smc = StyleSheet.create({
 });
 
 // ─── Financial Summary Card ───────────────────────────────────────────────────
-function FinancialSummaryCard({ total, coupon, paymentStatus, paymentMethod, amountPaid, paymentDate, C, isDark }) {
+function FinancialSummaryCard({ total, paymentStatus, paymentMethod, amountPaid, paymentDate, C, isDark }) {
     if (!total) return null;
 
     const {
@@ -360,6 +368,8 @@ function FinancialSummaryCard({ total, coupon, paymentStatus, paymentMethod, amo
         cgstRate = 0,
         total: totalAmt = 0,
         finalPayable = 0,
+        couponCode = null,
+        couponDiscount = 0,
     } = total;
 
     const isPaid = paymentStatus === 'paid';
@@ -407,8 +417,16 @@ function FinancialSummaryCard({ total, coupon, paymentStatus, paymentMethod, amo
                 )}
                 {discount > 0 && (
                     <FinRow
-                        label={`Discount${coupon ? ` (${coupon})` : ''}`}
+                        label="Discount"
                         value={`-${fmtCurrency(discount)}`}
+                        positive
+                        C={C}
+                    />
+                )}
+                {couponDiscount > 0 && (
+                    <FinRow
+                        label={`Coupon${couponCode ? ` (${couponCode})` : ''}`}
+                        value={`-${fmtCurrency(couponDiscount)}`}
                         positive
                         C={C}
                     />
@@ -1834,10 +1852,38 @@ export default function OrderDetailScreen({ route, navigation }) {
                     orderId={order._id}
                 />
                 <OrderSupportCard order={order} navigation={navigation} />
+
+                {/* Coupon — attach/remove while the order hasn't been invoiced yet */}
+                {order.paymentMethod === 'cash' ? (
+                    <View style={[screen.couponLockedCard, {
+                        backgroundColor: isDark ? '#2A1414' : '#FFF5F5',
+                        borderColor: 'rgba(255,107,107,0.25)',
+                    }]}>
+                        <MaterialCommunityIcons name="ticket-percent-outline" size={18} color="#FF6B6B" />
+                        <Text style={[screen.couponLockedText, { color: C.textSecondary }]}>
+                            Coupons aren't applicable on this order since it was settled via Cash on Delivery.
+                        </Text>
+                    </View>
+                ) : (
+                    <>
+                        <View style={screen.couponNotice}>
+                            <Ionicons name="information-circle-outline" size={13} color={C.textMuted} />
+                            <Text style={[screen.couponNoticeText, { color: C.textMuted }]}>
+                                Coupons are valid only for online payments — not applicable if you pay by Cash on Delivery.
+                            </Text>
+                        </View>
+                        <CouponCard
+                            order={order}
+                            C={C}
+                            isDark={isDark}
+                            onChanged={() => fetchOrderById(orderId)}
+                        />
+                    </>
+                )}
+
                 {/* Financial summary */}
                 <FinancialSummaryCard
                     total={order.total}
-                    coupon={order.coupon}
                     paymentStatus={order.paymentStatus}
                     paymentMethod={order.paymentMethod}
                     amountPaid={order.amountPaid}
@@ -1910,4 +1956,15 @@ const screen = StyleSheet.create({
     errorText: { fontSize: 14, textAlign: 'center', lineHeight: 22 },
     retryBtn: { paddingHorizontal: 32, paddingVertical: 12, borderRadius: 12, marginTop: 4 },
     retryLabel: { fontSize: 13, fontWeight: '800', color: '#1a1a1a', letterSpacing: 1 },
+    // ─── NEW ───
+    couponNotice: {
+        flexDirection: 'row', alignItems: 'center', gap: 6,
+        paddingHorizontal: 4, marginBottom: -6,
+    },
+    couponNoticeText: { fontSize: 11, flex: 1, lineHeight: 15 },
+    couponLockedCard: {
+        flexDirection: 'row', alignItems: 'center', gap: 10,
+        borderRadius: 14, borderWidth: 1, padding: 14,
+    },
+    couponLockedText: { fontSize: 12.5, flex: 1, lineHeight: 18 },
 });

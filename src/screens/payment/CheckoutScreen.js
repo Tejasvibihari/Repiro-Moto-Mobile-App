@@ -416,11 +416,13 @@ const sm = StyleSheet.create({
 // ─── 4. Financial Breakdown ───────────────────────────────────────────────────
 // Shows full price waterfall: subtotal → service discount → referral bill discount
 // → referral balance applied → taxes → TOTAL PAYABLE
-function FinancialBreakdown({ total, coupon, referralBalanceApplied = 0, C, isDark }) {
+function FinancialBreakdown({ total, referralBalanceApplied = 0, C, isDark }) {
     if (!total) return null;
 
     const baseAmount = toNum(total.baseAmount);
-    const discount = toNum(total.discount);
+    const discount = toNum(total.discount); // manual admin discount
+    const couponCode = total.couponCode ?? null;
+    const couponDiscount = toNum(total.couponDiscount); // finalized at invoice generation
     const referralDiscount = toNum(total.referralDiscount); // bill-level referral (from admin)
     const sgst = toNum(total.sgst);
     const cgst = toNum(total.cgst);
@@ -438,8 +440,14 @@ function FinancialBreakdown({ total, coupon, referralBalanceApplied = 0, C, isDa
         steps.push({ label: 'Subtotal (Services + Parts)', value: fmt(baseAmount), type: 'base' });
     }
     if (discount > 0) {
-        const couponLabel = coupon ? `Discount (${coupon})` : 'Discount';
-        steps.push({ label: couponLabel, value: `-${fmt(discount)}`, type: 'saving' });
+        steps.push({ label: 'Discount', value: `-${fmt(discount)}`, type: 'saving' });
+    }
+    if (couponDiscount > 0) {
+        steps.push({
+            label: `Coupon${couponCode ? ` (${couponCode})` : ''}`,
+            value: `-${fmt(couponDiscount)}`,
+            type: 'saving',
+        });
     }
     if (referralDiscount > 0) {
         steps.push({
@@ -1261,7 +1269,6 @@ export default function CheckoutScreen({ route, navigation }) {
                 <FadeUp delay={140}>
                     <FinancialBreakdown
                         total={order.total}
-                        coupon={order.coupon}
                         referralBalanceApplied={referralApplicable}
                         C={C}
                         isDark={isDark}
