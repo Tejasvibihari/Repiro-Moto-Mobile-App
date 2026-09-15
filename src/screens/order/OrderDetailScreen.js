@@ -1208,6 +1208,8 @@ function InvoiceModal({ visible, invoice, order, onClose, theme, loading }) {
     // ── Discount waterfall values ─────────────────────────────────────────────
     const subTotal = safeNum(t.subTotal || t.baseAmount);
     const billDiscount = safeNum(t.discount);
+    const couponCode = t.couponCode || null;
+    const couponDiscount = safeNum(t.couponDiscount);
     const referralDiscount = safeNum(t.referralDiscount);   // admin applied on bill
     const walletUsed = safeNum(t.walletAmountUsed ?? pd.walletAmountUsed);
     const sgst = safeNum(t.sgst);
@@ -1537,6 +1539,16 @@ function InvoiceModal({ visible, invoice, order, onClose, theme, loading }) {
                                 />
                             )}
 
+                            {/* Coupon discount */}
+                            {couponDiscount > 0 && (
+                                <InvRow
+                                    label={`Coupon${couponCode ? ` (${couponCode})` : ''}`}
+                                    value={`-${fmt(couponDiscount)}`}
+                                    positive
+                                    C={C}
+                                />
+                            )}
+
                             {/* Admin referral discount on bill */}
                             {referralDiscount > 0 && (
                                 <InvRow
@@ -1853,33 +1865,14 @@ export default function OrderDetailScreen({ route, navigation }) {
                 />
                 <OrderSupportCard order={order} navigation={navigation} />
 
-                {/* Coupon — attach/remove while the order hasn't been invoiced yet */}
-                {order.paymentMethod === 'cash' ? (
-                    <View style={[screen.couponLockedCard, {
-                        backgroundColor: isDark ? '#2A1414' : '#FFF5F5',
-                        borderColor: 'rgba(255,107,107,0.25)',
-                    }]}>
-                        <MaterialCommunityIcons name="ticket-percent-outline" size={18} color="#FF6B6B" />
-                        <Text style={[screen.couponLockedText, { color: C.textSecondary }]}>
-                            Coupons aren't applicable on this order since it was settled via Cash on Delivery.
-                        </Text>
-                    </View>
-                ) : (
-                    <>
-                        <View style={screen.couponNotice}>
-                            <Ionicons name="information-circle-outline" size={13} color={C.textMuted} />
-                            <Text style={[screen.couponNoticeText, { color: C.textMuted }]}>
-                                Coupons are valid only for online payments — not applicable if you pay by Cash on Delivery.
-                            </Text>
-                        </View>
-                        <CouponCard
-                            order={order}
-                            C={C}
-                            isDark={isDark}
-                            onChanged={() => fetchOrderById(orderId)}
-                        />
-                    </>
-                )}
+                {/* Coupon — attach/remove while the order hasn't been invoiced yet.
+                    Available for all payment methods, including Cash on Delivery. */}
+                <CouponCard
+                    order={order}
+                    C={C}
+                    isDark={isDark}
+                    onChanged={() => fetchOrderById(orderId)}
+                />
 
                 {/* Financial summary */}
                 <FinancialSummaryCard
@@ -1956,15 +1949,4 @@ const screen = StyleSheet.create({
     errorText: { fontSize: 14, textAlign: 'center', lineHeight: 22 },
     retryBtn: { paddingHorizontal: 32, paddingVertical: 12, borderRadius: 12, marginTop: 4 },
     retryLabel: { fontSize: 13, fontWeight: '800', color: '#1a1a1a', letterSpacing: 1 },
-    // ─── NEW ───
-    couponNotice: {
-        flexDirection: 'row', alignItems: 'center', gap: 6,
-        paddingHorizontal: 4, marginBottom: -6,
-    },
-    couponNoticeText: { fontSize: 11, flex: 1, lineHeight: 15 },
-    couponLockedCard: {
-        flexDirection: 'row', alignItems: 'center', gap: 10,
-        borderRadius: 14, borderWidth: 1, padding: 14,
-    },
-    couponLockedText: { fontSize: 12.5, flex: 1, lineHeight: 18 },
 });

@@ -1,4 +1,3 @@
-
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -161,6 +160,8 @@ export function buildInvoiceHTML(invoice, order = {}) {
     const subTotal = safeNum(t.subTotal || t.baseAmount);
     const billDiscount = safeNum(t.discount);
     const referralDiscount = safeNum(t.referralDiscount);
+    const couponCode = t.couponCode || null;
+    const couponDiscount = safeNum(t.couponDiscount);
     const walletUsed = safeNum(t.walletAmountUsed ?? pd.walletAmountUsed);
     const sgst = safeNum(t.sgst);
     const cgst = safeNum(t.cgst);
@@ -359,6 +360,7 @@ export function buildInvoiceHTML(invoice, order = {}) {
   <table class="summary">
     <tr><td>Subtotal</td><td class="r">${fmt(subTotal)}</td></tr>
     ${billDiscount > 0 ? `<tr><td>Discount</td><td class="r">-${fmt(billDiscount)}</td></tr>` : ''}
+    ${couponDiscount > 0 ? `<tr><td>Coupon${couponCode ? ` (${couponCode})` : ''}</td><td class="r">-${fmt(couponDiscount)}</td></tr>` : ''}
     ${referralDiscount > 0 ? `<tr><td>Referral Discount</td><td class="r">-${fmt(referralDiscount)}</td></tr>` : ''}
     <tr><td>CGST @ ${cgstRate}%</td><td class="r">${fmt(cgst)}</td></tr>
     <tr><td>SGST @ ${sgstRate}%</td><td class="r">${fmt(sgst)}</td></tr>
