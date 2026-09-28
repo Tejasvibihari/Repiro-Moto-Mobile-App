@@ -10,6 +10,8 @@ import DynamicStatusBar from "./components/common/DynamicStatusBar";
 import LocationGate from "./components/common/LocationGate";
 import UpdateModal from "./components/common/UpdateModal";
 import useVersionCheck from "./utils/useVersionCheck";
+import ShopClosedScreen from "./screens/closed/ShopClosedScreen";
+import { useShopStatus } from "./context/ShopStatusContext";
 
 export default function AppEntry() {
     const dispatch = useDispatch();
@@ -17,6 +19,7 @@ export default function AppEntry() {
     const isLoggedIn = useSelector((state) => state.auth.isLoggedIn);
     const mode = useSelector((state) => state.theme.mode);
     const theme = mode === "dark" ? DarkTheme : LightTheme;
+    const { status: shopStatus, refresh: refreshShopStatus, refreshing: checkingShop } = useShopStatus();
 
     // Force-update check — runs once on launch regardless of login state,
     // so even logged-out users on a stale build get prompted.
@@ -42,6 +45,12 @@ export default function AppEntry() {
                 </LocationGate>
             ) : (
                 <AppNavigator />         // ← auth screens skip the gate
+            )}
+
+            {/* Admin closed the shop (festival / event / holiday): block everything.
+                Rendered on top so the navigator stays mounted and nothing is lost on reopen. */}
+            {!splashVisible && shopStatus?.isClosed && (
+                <ShopClosedScreen status={shopStatus} onRetry={refreshShopStatus} checking={checkingShop} />
             )}
 
             {/* <UpdateModal

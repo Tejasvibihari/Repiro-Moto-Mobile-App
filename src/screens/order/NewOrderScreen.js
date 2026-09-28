@@ -8,6 +8,7 @@ import NewOrderForm from '../../components/orders/NewOrderForm';
 import PopUp from '../../components/common/PopUp';
 import Loader from '../../components/common/Loader';
 import axiosClient from '../../services/axiosClient';
+import { useShopStatus } from '../../context/ShopStatusContext';
 import { LightTheme, DarkTheme } from '../../styles/Theme';
 
 export default function NewOrderScreen() {
@@ -15,6 +16,7 @@ export default function NewOrderScreen() {
     const route = useRoute();                                          // ← add this
     const mode = useSelector((s) => s.theme.mode);
     const theme = mode === 'dark' ? DarkTheme : LightTheme;
+    const { refresh: refreshShopStatus } = useShopStatus();
     const initialServiceType = route.params?.serviceType ?? 'Schedule Repair';
     const initialSelectedServiceId = route.params?.preselectedServiceId ?? null;   // ← add this
 
@@ -29,6 +31,10 @@ export default function NewOrderScreen() {
             await axiosClient.post('/api/admin/order/userorder', payload);
             setSuccessPopup(true);
         } catch (err) {
+            // The admin may have closed the shop / Emergency window may have ended since the
+            // last poll — resync so the closed screen or the disabled toggle appears right away.
+            const code = err.response?.data?.code;
+            if (code === 'SHOP_CLOSED' || code === 'EMERGENCY_UNAVAILABLE') refreshShopStatus();
             setErrorMsg(err.response?.data?.message || err.message || 'Failed to place order.');
             setErrorPopup(true);
         } finally {

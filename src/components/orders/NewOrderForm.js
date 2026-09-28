@@ -22,6 +22,7 @@ import axiosClient from '../../services/axiosClient';
 import Alert from '../../components/common/Alert';
 import useBike from '../../hooks/useBikes';
 import useCoupon from '../../hooks/useCoupon';
+import { useShopStatus } from '../../context/ShopStatusContext';
 import MapView, { PROVIDER_GOOGLE } from 'react-native-maps';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -1048,6 +1049,17 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
 
     const [step, setStep] = useState(0);
     const [alert, setAlert] = useState(null);
+
+    // Emergency Repair is only offered inside the admin's service hours (and never while
+    // closed). Unknown status (still loading / offline) is treated as available.
+    const { status: shopStatus } = useShopStatus();
+    const emergencyAvailable = shopStatus?.emergencyAvailable !== false;
+    const hoursLabel = shopStatus?.serviceHours?.enabled
+        ? `${shopStatus.serviceHours.openLabel} – ${shopStatus.serviceHours.closeLabel}`
+        : null;
+    const emergencyBlockedMsg = hoursLabel
+        ? `Emergency repairs are available between ${hoursLabel}. You can still book a Schedule Repair.`
+        : 'Emergency repairs are not available right now. You can still book a Schedule Repair.';
     const [ccError, setCcError] = useState(false);
     const slideAnim = useRef(new Animated.Value(0)).current;
     const fadeAnim = useRef(new Animated.Value(1)).current;
@@ -1107,7 +1119,7 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
         setPreferredTime(timeValue);
         if (!preferredDate) return;
         const isToday = new Date().toDateString() === new Date(preferredDate).toDateString();
-        if (isToday && isWithinNextHour(preferredDate, timeValue)) {
+        if (isToday && isWithinNextHour(preferredDate, timeValue) && emergencyAvailable) {
             if (serviceType !== 'Emergency Repair') {
                 setServiceType('Emergency Repair');
                 // Optional: Show a subtle alert to inform the user
@@ -1118,7 +1130,17 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
                 setTimeout(() => setAlert(null), 3000);
             }
         }
-    }, [preferredDate, serviceType]);
+    }, [preferredDate, serviceType, emergencyAvailable]);
+
+    // If Emergency becomes unavailable (outside hours / shop closed while the form is open),
+    // fall back to Schedule Repair and tell the user why.
+    useEffect(() => {
+        if (!emergencyAvailable && serviceType === 'Emergency Repair') {
+            setServiceType('Schedule Repair');
+            setAlert({ type: 'info', message: emergencyBlockedMsg });
+            setTimeout(() => setAlert(null), 4500);
+        }
+    }, [emergencyAvailable, serviceType, emergencyBlockedMsg]);
 
     // ─── NEW: When date changes, clear invalid time and reset emergency if needed ──
     useEffect(() => {
@@ -1294,9 +1316,17 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
                         return (
                             <TouchableOpacity
                                 key={type}
-                                onPress={() => setServiceType(type)}
+                                onPress={() => {
+                                    if (isEmergency && !emergencyAvailable) {
+                                        setAlert({ type: 'warning', message: emergencyBlockedMsg });
+                                        setTimeout(() => setAlert(null), 4500);
+                                        return;
+                                    }
+                                    setServiceType(type);
+                                }}
                                 activeOpacity={0.8}
                                 style={{
+                                    opacity: isEmergency && !emergencyAvailable ? 0.45 : 1,
                                     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
                                     gap: 6, paddingVertical: 11, borderRadius: 12,
                                     backgroundColor: isActive ? (isDark ? activeColor + '22' : activeColor + '18') : 'transparent',
@@ -1308,6 +1338,9 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
                                 <Text style={{ fontSize: 12, fontWeight: isActive ? '800' : '600', color: isActive ? activeColor : theme.colors.textMuted, letterSpacing: 0.3 }}>
                                     {isEmergency ? 'Emergency' : 'Schedule'}
                                 </Text>
+                                {isEmergency && !emergencyAvailable && (
+                                    <Ionicons name="lock-closed" size={11} color={theme.colors.textMuted} />
+                                )}
                             </TouchableOpacity>
                         );
                     })}

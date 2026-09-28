@@ -26,6 +26,7 @@ import {
     RefreshControl,
     Platform,
     Linking,
+    Alert,
 } from 'react-native';
 import { useSelector } from 'react-redux';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -37,6 +38,7 @@ import axiosClient from '../../services/axiosClient';
 import { getImageUrl } from '../../utils/imageUtils';
 import ServiceDetailSheet from '../../components/dashboard/ServiceDetailSheet.js';
 import SERVICE_DETAILS from '../../data/serviceDetails.js';
+import { useShopStatus } from '../../context/ShopStatusContext';
 
 
 const { width: W } = Dimensions.get('window');
@@ -600,6 +602,7 @@ export default function DashboardScreen({ navigation }) {
     const C = theme.colors;
     const isDark = mode === 'dark';
     const user = useSelector((s) => s.auth.user);
+    const { status: shopStatus } = useShopStatus();
 
     const [searchText, setSearchText] = useState('');
     const [refreshing, setRefreshing] = useState(false);
@@ -640,7 +643,23 @@ export default function DashboardScreen({ navigation }) {
     // ── Handlers ──────────────────────────────────────────────────────────────
     // Pass serviceType so BookServiceScreen/NewOrderForm pre-selects the right type
     const goBookService = () => navigation?.navigate?.('NewOrder', { serviceType: 'Schedule Repair' });
-    const goEmergency = () => navigation?.navigate?.('NewOrder', { serviceType: 'Emergency Repair' });
+    const goEmergency = () => {
+        // Outside the admin's service hours only Schedule Repair can be booked.
+        if (shopStatus?.emergencyAvailable === false) {
+            const h = shopStatus?.serviceHours;
+            const when = h?.enabled ? ` between ${h.openLabel} and ${h.closeLabel}` : ' right now';
+            Alert.alert(
+                'Emergency repair unavailable',
+                `Emergency repairs are only available${h?.enabled ? when : ' during service hours'}. You can still book a Schedule Repair for a time that suits you.`,
+                [
+                    { text: 'Not now', style: 'cancel' },
+                    { text: 'Book Schedule Repair', onPress: goBookService },
+                ]
+            );
+            return;
+        }
+        navigation?.navigate?.('NewOrder', { serviceType: 'Emergency Repair' });
+    };
     const goOrderDetail = (o) => navigation?.navigate?.('OrderDetail', { orderId: o._id });
     const goOrders = () => navigation?.navigate?.('Orders');
     const goAddBike = () => navigation?.navigate?.('AddBike');
