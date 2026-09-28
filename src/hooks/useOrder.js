@@ -7,6 +7,7 @@ const useOrder = () => {
     const [currentOrder, setCurrentOrder] = useState(null);
     const [loading, setLoading] = useState(false);
     const [canceling, setCanceling] = useState(false); // new state for cancellation loading
+    const [rescheduling, setRescheduling] = useState(false); // loading state for reschedule
     const [error, setError] = useState(null);
 
     /**
@@ -106,6 +107,56 @@ const useOrder = () => {
     }, [currentOrder]);
 
     /**
+     * Reschedule an order to a new date/time.
+     * The server only allows this while the status is 'Pending' or
+     * 'Mechanic Assigned' (i.e. before the mechanic arrives) and rejects it
+     * with a 400/409 otherwise.
+     * @param {string} id - The order's Mongo _id.
+     * @param {{preferredDate: string, preferredTime: string, reason?: string}} payload
+     *        preferredDate = 'YYYY-MM-DD', preferredTime = '10:00 AM'
+     * @returns {Promise<Object>} - The updated order.
+     */
+    const rescheduleOrder = useCallback(async (id, { preferredDate, preferredTime, reason }) => {
+        if (!id) {
+            setError('Order ID is required');
+            return;
+        }
+
+        setRescheduling(true);
+        setError(null);
+        try {
+            const response = await axiosClient.put(`/api/admin/order/user-reschedule/${id}`, {
+                preferredDate,
+                preferredTime,
+                reason,
+            });
+            const updated = response.data.order;
+
+            // The list endpoint returns plain (unpopulated) orders, so replace whole.
+            setOrders(prev => prev.map(o => (o._id === id ? updated : o)));
+
+            // currentOrder is populated (mechanics/user), so only merge the schedule
+            // fields instead of overwriting populated refs with raw ids.
+            setCurrentOrder(prev => (prev && prev._id === id ? {
+                ...prev,
+                preferredDate: updated.preferredDate,
+                preferredTime: updated.preferredTime,
+                reminderSent: updated.reminderSent,
+                rescheduleCount: updated.rescheduleCount,
+                rescheduleHistory: updated.rescheduleHistory,
+            } : prev));
+
+            return updated;
+        } catch (err) {
+            const message = err.response?.data?.message || err.message;
+            setError(message);
+            throw err;
+        } finally {
+            setRescheduling(false);
+        }
+    }, []);
+
+    /**
      * Clear any stored error.
      */
     const clearError = useCallback(() => setError(null), []);
@@ -115,10 +166,12 @@ const useOrder = () => {
         currentOrder,
         loading,
         canceling,           // new loading state for cancellation
+        rescheduling,        // loading state for reschedule
         error,
         fetchOrders,
         fetchOrderById,
         cancelOrder,         // new cancellation function
+        rescheduleOrder,     // reschedule (only Pending / Mechanic Assigned)
         refetch: fetchOrders,
         clearError,
     };

@@ -27,6 +27,7 @@ import Loader from '../../components/common/Loader';
 import { MechanicCard, VendorCard } from '../../components/orders/MechanicCard';
 import CouponCard from '../../components/orders/CouponCard';
 import useOrder from '../../hooks/useOrder';
+import RescheduleModal, { canRescheduleStatus } from '../../components/orders/RescheduleModal';
 import PopUp from '../../components/common/PopUp';
 import axiosClient from '../../services/axiosClient';
 import { getImageUrl } from '../../utils/imageUtils';
@@ -884,12 +885,14 @@ const rim = StyleSheet.create({
 });
 
 // ─── Action Buttons ───────────────────────────────────────────────────────────
-function ActionButtons({ order, onCancel, onViewInvoice, onPay, C, isDark }) {
+function ActionButtons({ order, onCancel, onReschedule, onViewInvoice, onPay, C, isDark }) {
     const status = order?.status;
     const paymentStatus = order?.paymentStatus;
     const finalPayable = order?.total?.finalPayable ?? 0;
 
     const canCancel = ['Pending', 'Mechanic Assigned'].includes(status);
+    // Customers can reschedule only until the mechanic arrives
+    const canReschedule = canRescheduleStatus(status);
     const isCompleted = status === 'Work Completed';
     const isInvoiceGenerated = status === 'Invoice Generated';
     const isPaid = paymentStatus === 'paid';
@@ -897,10 +900,24 @@ function ActionButtons({ order, onCancel, onViewInvoice, onPay, C, isDark }) {
     const showPayButton = isInvoiceGenerated && !isPaid && finalPayable > 0;
     const showViewInvoice = (status === 'Completed' || isInvoiceGenerated) && isPaid;
 
-    if (!canCancel && !isCompleted && !isInvoiceGenerated && !showViewInvoice) return null;
+    if (!canCancel && !canReschedule && !isCompleted && !isInvoiceGenerated && !showViewInvoice) return null;
 
     return (
         <View style={ab.container}>
+            {canReschedule && (
+                <TouchableOpacity
+                    style={[ab.btn, {
+                        backgroundColor: C.primary + '14',
+                        borderColor: C.primary + '66',
+                    }]}
+                    onPress={onReschedule}
+                    activeOpacity={0.78}
+                >
+                    <MaterialCommunityIcons name="calendar-edit" size={15} color={C.primary} />
+                    <Text style={[ab.btnLabel, { color: C.primary }]}>Reschedule Booking</Text>
+                </TouchableOpacity>
+            )}
+
             {canCancel && (
                 <TouchableOpacity
                     style={[ab.btn, {
@@ -981,7 +998,7 @@ const ab = StyleSheet.create({
 });
 
 // ─── Order Header Card ────────────────────────────────────────────────────────
-function OrderHeaderCard({ order, C, isDark, onCancel, onViewInvoice, onPay }) {
+function OrderHeaderCard({ order, C, isDark, onCancel, onReschedule, onViewInvoice, onPay }) {
     const fadeIn = useRef(new Animated.Value(0)).current;
     const slideY = useRef(new Animated.Value(16)).current;
 
@@ -1091,6 +1108,7 @@ function OrderHeaderCard({ order, C, isDark, onCancel, onViewInvoice, onPay }) {
                 <ActionButtons
                     order={order}
                     onCancel={onCancel}
+                    onReschedule={onReschedule}
                     onViewInvoice={onViewInvoice}
                     onPay={onPay}
                     C={C}
@@ -1714,12 +1732,16 @@ export default function OrderDetailScreen({ route, navigation }) {
         loading: orderLoading,
         canceling,
         cancelOrder,
+        rescheduling,
+        rescheduleOrder,
         fetchOrderById,
         error: orderError,
     } = useOrder();
 
     const [refreshing, setRefreshing] = useState(false);
     const [reasonModalVisible, setReasonModalVisible] = useState(false);
+    const [rescheduleModalVisible, setRescheduleModalVisible] = useState(false);
+    const [rescheduleSuccessVisible, setRescheduleSuccessVisible] = useState(false);
     const [successModalVisible, setSuccessModalVisible] = useState(false);
     const [errorModalVisible, setErrorModalVisible] = useState(false);
     const [errorMessage, setErrorMessage] = useState('');
@@ -1746,6 +1768,23 @@ export default function OrderDetailScreen({ route, navigation }) {
     }, [orderId, fetchOrderById]);
 
     const handleCancelPress = () => setReasonModalVisible(true);
+
+    const handleReschedulePress = () => setRescheduleModalVisible(true);
+
+    const handleRescheduleSubmit = async ({ preferredDate, preferredTime, reason }) => {
+        try {
+            await rescheduleOrder(orderId, { preferredDate, preferredTime, reason });
+            setRescheduleModalVisible(false);
+            setRescheduleSuccessVisible(true);
+        } catch (err) {
+            const msg = err.response?.data?.message || 'Failed to reschedule booking';
+            setErrorMessage(msg);
+            setRescheduleModalVisible(false);
+            setErrorModalVisible(true);
+            // The status may have moved on (e.g. mechanic just arrived) — refresh the screen
+            fetchOrderById(orderId).catch(() => { });
+        }
+    };
 
     const handlePayNow = () => {
         navigation.navigate('Checkout', { orderId: order._id });
@@ -1823,6 +1862,7 @@ export default function OrderDetailScreen({ route, navigation }) {
                     C={C}
                     isDark={isDark}
                     onCancel={handleCancelPress}
+                    onReschedule={handleReschedulePress}
                     onViewInvoice={handleViewInvoice}
                     onPay={handlePayNow}
                 />
@@ -1895,6 +1935,32 @@ export default function OrderDetailScreen({ route, navigation }) {
                 onSubmit={handleCancelSubmit}
                 loading={canceling}
                 theme={{ colors: C, mode }}
+            />
+
+            {/* Reschedule Modal */}
+            <RescheduleModal
+                visible={rescheduleModalVisible}
+                onClose={() => setRescheduleModalVisible(false)}
+                onSubmit={handleRescheduleSubmit}
+                loading={rescheduling}
+                theme={{ colors: C, mode }}
+                isDark={isDark}
+                currentDate={order.preferredDate}
+                currentTime={order.preferredTime}
+                subtitle="You can reschedule until the mechanic arrives."
+                reasonPlaceholder="Let us know why you're changing the time"
+            />
+
+            {/* Reschedule success PopUp */}
+            <PopUp
+                visible={rescheduleSuccessVisible}
+                type="success"
+                title="Booking Rescheduled"
+                message="Your booking has been moved to the new date and time."
+                primaryLabel="OK"
+                onPrimary={() => setRescheduleSuccessVisible(false)}
+                onClose={() => setRescheduleSuccessVisible(false)}
+                showCloseIcon
             />
 
             {/* Success PopUp */}
