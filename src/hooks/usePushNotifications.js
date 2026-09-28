@@ -50,6 +50,10 @@ export function usePushNotifications(navigation) {
             let target = null;
             if (data?.type === 'service_reminder') target = ['NewOrder', { serviceType: 'Schedule Repair' }];
             else if (data?.type === 'promotion') target = ['Notifications'];
+            // Support replied → open that order's chat (not the order detail)
+            else if (data?.type === 'chat' && data?.orderId) {
+                target = ['ChatSupport', { order: { _id: data.orderId, orderId: data.screenOrderId } }];
+            }
             else if (data?.orderId) target = ['OrderDetail', { orderId: data.orderId }];
             if (!target) return;
             for (let i = 0; i < 20; i++) {

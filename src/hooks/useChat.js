@@ -1,6 +1,7 @@
 // hooks/useChat.js
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { AppState } from 'react-native';
 import { io } from 'socket.io-client';
 import { useSelector } from 'react-redux';
 import axiosClient from '../services/axiosClient';
@@ -67,6 +68,16 @@ export default function useChat(orderId) {
         });
         socketRef.current = socket;
 
+        // Tell the server whether the chat is really on screen. While it is, no push is
+        // sent (you can already see the reply); if the app is backgrounded it is.
+        const announceVisibility = () => {
+            if (!joinedRef.current) return;
+            socket.emit('chat-visibility', {
+                orderId: orderId.toString(),
+                visible: AppState.currentState === 'active',
+            });
+        };
+
         socket.on('connect', () => {
             setConnected(true);
             setError(null);
@@ -76,10 +87,14 @@ export default function useChat(orderId) {
                     if (ack?.error) {
                         setError(ack.error);
                         joinedRef.current = false;
+                    } else {
+                        announceVisibility();
                     }
                 });
             }
         });
+
+        const appStateSub = AppState.addEventListener('change', () => announceVisibility());
 
         socket.on('disconnect', () => {
             setConnected(false);
@@ -148,6 +163,7 @@ export default function useChat(orderId) {
         });
 
         return () => {
+            appStateSub.remove();
             joinedRef.current = false;
             pendingTempIds.current.clear();
             socket.disconnect();

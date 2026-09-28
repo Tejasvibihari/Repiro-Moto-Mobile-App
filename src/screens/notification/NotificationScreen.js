@@ -72,6 +72,12 @@ export default function NotificationScreen() {
                 console.error('Mark read failed', error);
             }
         }
+        if (item.type === 'chat' && item.orderId) {
+            navigation.navigate('ChatSupport', {
+                order: { _id: item.orderId, orderId: item.data?.screenOrderId },
+            });
+            return;
+        }
         if (item.orderId) {
             navigation.navigate('OrderDetail', { orderId: item.orderId });
         }
