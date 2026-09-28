@@ -45,10 +45,16 @@ export function usePushNotifications(navigation) {
         // cold start the navigator may not be mounted yet.
         const openFromResponse = async (response) => {
             const data = response?.notification?.request?.content?.data;
-            if (!data?.orderId || !navigation) return;
+            if (!navigation) return;
+            // service_reminder carries the *previous* order id, but the useful action is a new booking.
+            let target = null;
+            if (data?.type === 'service_reminder') target = ['NewOrder', { serviceType: 'Schedule Repair' }];
+            else if (data?.type === 'promotion') target = ['Notifications'];
+            else if (data?.orderId) target = ['OrderDetail', { orderId: data.orderId }];
+            if (!target) return;
             for (let i = 0; i < 20; i++) {
                 if (navigation.isReady?.()) {
-                    navigation.navigate('OrderDetail', { orderId: data.orderId });
+                    navigation.navigate(...target);
                     return;
                 }
                 await new Promise(r => setTimeout(r, 250));
