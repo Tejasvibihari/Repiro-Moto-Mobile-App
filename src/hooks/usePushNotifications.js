@@ -117,15 +117,17 @@ export function usePushNotifications(navigation) {
             ?? Constants.easConfig?.projectId
             ?? 'b7b6901c-38f8-4d45-9a33-3411236461ec';
 
-        const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
-
-        dispatch(setExpoPushToken(token));
-
-        // Send token to your backend so it can push to this device
         try {
+            const token = (await Notifications.getExpoPushTokenAsync({ projectId })).data;
+            console.log('[push] Expo token:', token);
+
+            dispatch(setExpoPushToken(token));
+
+            // Send token to your backend so it can push to this device
             await notificationService.registerToken(token);
+            console.log('[push] token registered with backend');
         } catch (e) {
-            console.error('Failed to register push token:', e);
+            console.error('[push] token registration failed:', e?.message || e);
         }
     }
 }

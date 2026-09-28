@@ -39,13 +39,22 @@
       "permissions": [
         "android.permission.RECORD_AUDIO",
         "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION"
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.POST_NOTIFICATIONS"
       ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./src/assets/logo/logo300.png",
+          "color": "#e2a731",
+          "defaultChannel": "orders"
+        }
+      ],
       [
         "expo-image-picker",
         {
