@@ -41,14 +41,24 @@ export function usePushNotifications(navigation) {
             }));
         });
 
-        // Background/killed: user taps notification
-        responseListener.current = Notifications.addNotificationResponseReceivedListener(response => {
-            const data = response.notification.request.content.data;
-            if (data?.orderId && navigation) {
-                // Navigate to the order detail screen
-                navigation.navigate('Orders', { orderId: data.orderId });
+        // User taps a notification → open that order. Retries briefly because on a
+        // cold start the navigator may not be mounted yet.
+        const openFromResponse = async (response) => {
+            const data = response?.notification?.request?.content?.data;
+            if (!data?.orderId || !navigation) return;
+            for (let i = 0; i < 20; i++) {
+                if (navigation.isReady?.()) {
+                    navigation.navigate('OrderDetail', { orderId: data.orderId });
+                    return;
+                }
+                await new Promise(r => setTimeout(r, 250));
             }
-        });
+        };
+
+        responseListener.current = Notifications.addNotificationResponseReceivedListener(openFromResponse);
+
+        // App was killed and opened by tapping a notification
+        Notifications.getLastNotificationResponseAsync().then(r => { if (r) openFromResponse(r); });
 
         return () => {
             notificationListener.current?.remove();
@@ -76,6 +86,15 @@ export function usePushNotifications(navigation) {
         }
 
         if (Platform.OS === 'android') {
+            // Server pushes use channelId 'orders' — the channel must exist or Android
+            // falls back to a silent/low-priority default.
+            await Notifications.setNotificationChannelAsync('orders', {
+                name: 'Order Updates',
+                importance: Notifications.AndroidImportance.MAX,
+                vibrationPattern: [0, 250, 250, 250],
+                lightColor: '#e2a731',
+                sound: 'default',
+            });
             await Notifications.setNotificationChannelAsync('default', {
                 name: 'default',
                 importance: Notifications.AndroidImportance.MAX,

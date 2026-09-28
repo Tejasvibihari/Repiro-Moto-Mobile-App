@@ -20,7 +20,7 @@ export default function AppEntry() {
 
     // Force-update check — runs once on launch regardless of login state,
     // so even logged-out users on a stale build get prompted.
-    const [updateInfo, setUpdateInfo] = useVersionCheck("mobile");
+    // const [updateInfo, setUpdateInfo] = useVersionCheck("mobile");
 
     useEffect(() => {
         const current = Appearance.getColorScheme();
@@ -44,13 +44,13 @@ export default function AppEntry() {
                 <AppNavigator />         // ← auth screens skip the gate
             )}
 
-            <UpdateModal
+            {/* <UpdateModal
                 visible={updateInfo.visible}
                 force={updateInfo.force}
                 message={updateInfo.message}
                 storeUrl={updateInfo.storeUrl}
                 onLater={() => setUpdateInfo((prev) => ({ ...prev, visible: false }))}
-            />
+            /> */}
         </View>
     );
 }

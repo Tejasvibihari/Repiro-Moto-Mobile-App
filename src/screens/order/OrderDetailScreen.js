@@ -773,8 +773,8 @@ const ReasonInputModal = ({ visible, onClose, onSubmit, loading, theme }) => {
 
     const handleSubmit = () => {
         const trimmedReason = reason.trim();
-        if (!trimmedReason) {
-            setValidationError('Please provide a reason for cancellation.');
+        if (trimmedReason.length < 5) {
+            setValidationError('Please enter a reason for cancellation (at least 5 characters).');
             return;
         }
         setValidationError('');
@@ -825,6 +825,7 @@ const ReasonInputModal = ({ visible, onClose, onSubmit, loading, theme }) => {
                         onChangeText={(t) => { setReason(t); if (validationError) setValidationError(''); }}
                         multiline
                         numberOfLines={3}
+                        maxLength={300}
                         textAlignVertical="top"
                     />
                     {validationError ? (
@@ -1100,7 +1101,7 @@ function OrderHeaderCard({ order, C, isDark, onCancel, onReschedule, onViewInvoi
                     }]}>
                         <MaterialCommunityIcons name="close-circle-outline" size={13} color="#FF6B6B" />
                         <Text style={[hdr.cancelNoteText, { color: '#FF6B6B' }]}>
-                            Cancelled: {order.cancellationReason}
+                            {order.cancelledBy?.role && order.cancelledBy.role !== 'user' ? 'Cancelled by Repairo Moto' : 'Cancelled'}: {order.cancellationReason}
                         </Text>
                     </View>
                 )}
