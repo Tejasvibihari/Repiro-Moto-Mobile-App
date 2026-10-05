@@ -7,6 +7,8 @@ import {
 } from 'react-native';
 import { LightTheme, DarkTheme } from '../../styles/Theme';
 import LoginForm from '../../components/auth/LoginForm';
+import PhoneLoginForm from '../../components/auth/PhoneLoginForm';
+import { looksLikePhone, cleanPhone } from '../../services/phoneAuth';
 import axiosClient from '../../services/axiosClient';
 import useAuth from '../../hooks/useAuth';
 import Alert from '../../components/common/Alert';
@@ -28,6 +30,9 @@ export default function LoginScreen({ navigation }) {
     const { signIn } = useAuth();
 
     const [loading, setLoading] = useState(false);
+    // 'phone' (WhatsApp / SMS OTP, default) or 'email' (email/phone + password)
+    const [mode, setMode] = useState('phone');
+    const [phonePrefill, setPhonePrefill] = useState({ value: '', auto: false, key: 0 });
     const [alert, setAlert] = useState({ visible: false, message: '', type: 'error' });
 
     const contentOpacity = useRef(new Animated.Value(0)).current;
@@ -54,6 +59,12 @@ export default function LoginScreen({ navigation }) {
     };
 
     const handleLogin = async (email, password) => {
+        // A phone number typed into the email box just continues with the OTP flow — no warning, same account.
+        if (looksLikePhone(email)) {
+            setPhonePrefill((p) => ({ value: cleanPhone(email), auto: true, key: p.key + 1 }));
+            setMode('phone');
+            return;
+        }
         if (!email || !password) { showAlert('Please enter email and password', 'warning'); return; }
         setLoading(true);
         try {
@@ -116,7 +127,27 @@ export default function LoginScreen({ navigation }) {
                     )}
 
                     <Animated.View style={{ opacity: contentOpacity, transform: [{ translateY: contentTransY }] }}>
-                        <LoginForm onSubmit={handleLogin} onForgotPassword={() => navigation.navigate('ForgotPassword')} loading={loading} />
+                        {mode === 'phone' ? (
+                            <PhoneLoginForm
+                                key={phonePrefill.key}
+                                initialPhone={phonePrefill.value}
+                                autoSend={phonePrefill.auto}
+                                onAuthenticated={signIn}
+                                onError={(m) => showAlert(m, 'error')}
+                            />
+                        ) : (
+                            <LoginForm onSubmit={handleLogin} onForgotPassword={() => navigation.navigate('ForgotPassword')} loading={loading} />
+                        )}
+
+                        <TouchableOpacity
+                            onPress={() => { setPhonePrefill((p) => ({ value: '', auto: false, key: p.key + 1 })); setMode(mode === 'phone' ? 'email' : 'phone'); }}
+                            activeOpacity={0.7}
+                            style={{ alignSelf: 'center', marginTop: 16 }}
+                        >
+                            <Text style={[s.footerCta, { color: C.primary }]}>
+                                {mode === 'phone' ? 'Login with email & password' : 'Login with phone number'}
+                            </Text>
+                        </TouchableOpacity>
                     </Animated.View>
 
                     <Animated.View style={[s.footer, { opacity: contentOpacity }]}>
