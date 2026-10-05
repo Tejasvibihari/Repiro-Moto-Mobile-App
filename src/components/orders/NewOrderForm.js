@@ -23,6 +23,8 @@ import Alert from '../../components/common/Alert';
 import useBike from '../../hooks/useBikes';
 import useCoupon from '../../hooks/useCoupon';
 import { useShopStatus } from '../../context/ShopStatusContext';
+import { checkBookingAvailability, isBookingPolicyError } from '../../services/bookingAvailability';
+import { BOOKING_TIME_SLOTS } from '../../services/bookingTimeSlots';
 import MapView, { PROVIDER_GOOGLE } from 'react-native-maps';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -45,23 +47,11 @@ const QUICK_SERVICES = [
     { id: 'chain_sprocket', label: 'Chain & Sprocket', icon: 'git-network-outline', color: '#7B68EE' },
 ];
 
-const TIME_SLOTS = [
-    { label: '8 AM', value: '08:00 AM' },
-    { label: '9 AM', value: '09:00 AM' },
-    { label: '10 AM', value: '10:00 AM' },
-    { label: '11 AM', value: '11:00 AM' },
-    { label: '12 PM', value: '12:00 PM' },
-    { label: '1 PM', value: '01:00 PM' },
-    { label: '2 PM', value: '02:00 PM' },
-    { label: '3 PM', value: '03:00 PM' },
-    { label: '4 PM', value: '04:00 PM' },
-    { label: '5 PM', value: '05:00 PM' },
-    { label: '6 PM', value: '06:00 PM' },
-    { label: '7 PM', value: '07:00 PM' },
-];
-
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+const toYmd = (date) =>
+    `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 
 const STEPS = [
     { id: 'location', title: 'Where are you?', subtitle: "We'll check if your area is covered" },
@@ -377,7 +367,7 @@ function ServiceCard({ item, selected, disabled, onPress, theme, isDark }) {
 }
 
 // ─── Date row (unchanged) ────────────────────────────────────────────────────
-function DateRow({ selectedDate, onSelect, theme, isDark }) {
+function DateRow({ selectedDate, onSelect, unavailableDates = {}, checkingDate, theme, isDark }) {
     const today = new Date();
     const CARD_WIDTH = 56;
     const CARD_GAP = 8;
@@ -399,7 +389,7 @@ function DateRow({ selectedDate, onSelect, theme, isDark }) {
         }
     });
 
-    const todayStr = today.toDateString();
+    const todayStr = toYmd(today);
 
     return (
         <ScrollView
@@ -426,15 +416,18 @@ function DateRow({ selectedDate, onSelect, theme, isDark }) {
                     </View>
                     <View style={{ flexDirection: 'row', gap: CARD_GAP }}>
                         {group.days.map((d) => {
-                            const key = d.toDateString();
+                            const key = toYmd(d);
                             const isSelected = selectedDate === key;
                             const isToday = key === todayStr;
                             const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+                            const unavailable = unavailableDates[key];
+                            const checking = checkingDate === key;
 
                             return (
                                 <TouchableOpacity
                                     key={key}
                                     onPress={() => onSelect(key)}
+                                    disabled={checking}
                                     activeOpacity={0.8}
                                     style={{
                                         width: CARD_WIDTH,
@@ -451,11 +444,14 @@ function DateRow({ selectedDate, onSelect, theme, isDark }) {
                                         backgroundColor: isSelected
                                             ? theme.colors.primary
                                             : isDark ? theme.colors.surfaceLow : '#FFF',
+                                        opacity: unavailable ? 0.45 : 1,
                                         alignItems: 'center',
                                         gap: 4,
                                     }}
                                 >
-                                    {isToday ? (
+                                    {checking ? (
+                                        <ActivityIndicator size="small" color={isSelected ? '#1a1a1a' : theme.colors.primary} />
+                                    ) : isToday ? (
                                         <View style={{
                                             paddingHorizontal: 6, paddingVertical: 1.5, borderRadius: 6,
                                             backgroundColor: isSelected ? '#1a1a1a18' : theme.colors.primary + '22',
@@ -1040,7 +1036,7 @@ function SummaryRow({ icon, label, value, theme, isMCI }) {
 }
 
 // ─── Main Form (updated schedule step) ───────────────────────────────────────
-export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 'Schedule Repair', initialSelectedServiceId = null, }) {
+export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 'Schedule Repair', initialSelectedServiceId = null, availabilityRefreshKey = 0, }) {
     const mode = useSelector((s) => s.theme.mode);
     const theme = mode === 'dark' ? DarkTheme : LightTheme;
     const isDark = mode === 'dark';
@@ -1091,6 +1087,9 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
     const [otherServiceText, setOtherServiceText] = useState('');
     const [preferredDate, setPreferredDate] = useState('');
     const [preferredTime, setPreferredTime] = useState('');
+    const [availabilityError, setAvailabilityError] = useState(null);
+    const [unavailableDates, setUnavailableDates] = useState({});
+    const [checkingDate, setCheckingDate] = useState(null);
     const [issue, setIssue] = useState('');
     const [serviceType, setServiceType] = useState(initialServiceType);
 
@@ -1102,16 +1101,54 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
     const [appliedCoupon, setAppliedCoupon] = useState(null); // verified coupon summary
     const [couponError, setCouponError] = useState(null);
 
+    const checkDate = useCallback(async (date) => {
+        setCheckingDate(date);
+        setAvailabilityError(null);
+        try {
+            const result = await checkBookingAvailability(date);
+            if (!result.available) {
+                setUnavailableDates((prev) => ({ ...prev, [date]: result }));
+                setAvailabilityError(result);
+                return false;
+            }
+            setUnavailableDates((prev) => {
+                const next = { ...prev };
+                delete next[date];
+                return next;
+            });
+            return true;
+        } catch (err) {
+            if (isBookingPolicyError(err)) {
+                setUnavailableDates((prev) => ({ ...prev, [date]: err.response.data }));
+                setAvailabilityError(err.response.data);
+                return false;
+            }
+            return true;
+        } finally {
+            setCheckingDate(null);
+        }
+    }, []);
+
+    const handleDateSelect = useCallback(async (date) => {
+        setPreferredDate(date);
+        setPreferredTime('');
+        await checkDate(date);
+    }, [checkDate]);
+
+    useEffect(() => {
+        if (availabilityRefreshKey && preferredDate) checkDate(preferredDate);
+    }, [availabilityRefreshKey, preferredDate, checkDate]);
+
     // Clear CC error when user types
     useEffect(() => { if (cc.trim()) setCcError(false); }, [cc]);
 
     // ─── NEW: Filter time slots based on selected date ─────────────────────────
     const getAvailableTimeSlots = useCallback(() => {
-        if (!preferredDate) return TIME_SLOTS;
+        if (!preferredDate) return BOOKING_TIME_SLOTS;
         const isToday = new Date().toDateString() === new Date(preferredDate).toDateString();
-        if (!isToday) return TIME_SLOTS;
+        if (!isToday) return BOOKING_TIME_SLOTS;
         // For today, filter out slots that have already passed
-        return TIME_SLOTS.filter(slot => !isTimeSlotPassed(preferredDate, slot.value));
+        return BOOKING_TIME_SLOTS.filter(slot => !isTimeSlotPassed(preferredDate, slot.value));
     }, [preferredDate]);
 
     // ─── NEW: Auto‑set emergency if selected time is within next hour on today ──
@@ -1245,17 +1282,22 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
         setCouponError(null);
     };
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
         if (!coords) { setAlert({ type: 'error', message: 'Location is required.' }); return; }
         if (!city) { setAlert({ type: 'error', message: 'Could not determine city from location. Please try again.' }); return; }
+        if (checkingDate) return;
+
+        const available = await checkDate(preferredDate);
+        if (!available) {
+            setStep(4);
+            return;
+        }
 
         const finalModel = model === 'Other' ? customModel.trim() : model;
         const finalServices = selectedServices.map(id => {
             if (id === 'other') return otherServiceText.trim();
             return getServiceLabel(id);
         }).filter(Boolean);
-        const localDateStr = new Date(preferredDate).toLocaleDateString('en-CA');
-
         const payload = {
             name: name.trim(),
             email: user?.email || '',
@@ -1274,7 +1316,7 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
             services: finalServices,
             serviceType: serviceType,
             otherService: selectedServices.includes('other') ? otherServiceText.trim() : '',
-            preferredDate: localDateStr,
+            preferredDate,
             preferredTime: preferredTime,
             issues: issue.trim(),
             userId: user?._id,
@@ -1284,12 +1326,25 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
             // would cause the backend to reject the whole booking.
             ...(appliedCoupon ? { coupon: appliedCoupon.code } : {}),
         };
-        onSubmit(payload);
+        try {
+            await onSubmit(payload);
+        } catch (err) {
+            if (isBookingPolicyError(err)) {
+                setAvailabilityError(err.response.data);
+                setUnavailableDates((prev) => ({ ...prev, [preferredDate]: err.response.data }));
+                setStep(4);
+                return;
+            }
+            throw err;
+        }
     };
 
     const currentStep = STEPS[step];
     const isLastStep = step === STEPS.length - 1;
     const availableTimeSlots = getAvailableTimeSlots();
+    const dateUnavailable = step === 4 && !!preferredDate && (
+        !!unavailableDates[preferredDate] || checkingDate === preferredDate
+    );
 
     return (
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -1411,7 +1466,12 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
                     {step === 4 && (
                         <View>
                             <Text style={[labelStyle(theme), { marginBottom: 14 }]}>Choose a Date</Text>
-                            <DateRow selectedDate={preferredDate} onSelect={setPreferredDate} theme={theme} isDark={isDark} />
+                            <DateRow selectedDate={preferredDate} onSelect={handleDateSelect} unavailableDates={unavailableDates} checkingDate={checkingDate} theme={theme} isDark={isDark} />
+                            {availabilityError && preferredDate && (
+                                <Text style={{ color: theme.colors.error || '#D64545', fontSize: 12, fontWeight: '600', marginTop: 10 }}>
+                                    {availabilityError.message}
+                                </Text>
+                            )}
                             <Text style={[labelStyle(theme), { marginTop: 24, marginBottom: 14 }]}>Choose a Time Slot</Text>
                             {availableTimeSlots.length === 0 && preferredDate && (
                                 <View style={{ padding: 16, backgroundColor: theme.colors.warning + '20', borderRadius: 12, marginBottom: 16 }}>
@@ -1423,12 +1483,14 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
                             <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
                                 {availableTimeSlots.map((slot) => {
                                     const isSelected = preferredTime === slot.value;
+                                    const timeDisabled = dateUnavailable;
                                     return (
                                         <TouchableOpacity
                                             key={slot.value}
                                             onPress={() => handleTimeSelect(slot.value)}
+                                            disabled={timeDisabled}
                                             activeOpacity={0.8}
-                                            style={{ width: '30%', paddingVertical: 11, borderRadius: 14, borderWidth: 1.5, borderColor: isSelected ? theme.colors.primary : theme.colors.border, backgroundColor: isSelected ? theme.colors.primary : isDark ? theme.colors.surfaceLow : '#FFF', alignItems: 'center', justifyContent: 'center' }}
+                                            style={{ width: '30%', paddingVertical: 11, borderRadius: 14, borderWidth: 1.5, borderColor: isSelected ? theme.colors.primary : theme.colors.border, backgroundColor: isSelected ? theme.colors.primary : isDark ? theme.colors.surfaceLow : '#FFF', alignItems: 'center', justifyContent: 'center', opacity: timeDisabled ? 0.35 : 1 }}
                                         >
                                             <Text style={{ fontSize: 12.5, fontWeight: isSelected ? '800' : '600', color: isSelected ? '#1a1a1a' : theme.colors.textSecondary, letterSpacing: 0.2 }}>{slot.label}</Text>
                                         </TouchableOpacity>
@@ -1551,7 +1613,7 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
                         <TouchableOpacity onPress={goPrev} activeOpacity={0.8} style={{ width: 54, height: 54, borderRadius: 16, borderWidth: 1.5, borderColor: theme.colors.border, backgroundColor: isDark ? theme.colors.surfaceLow : '#FFF', alignItems: 'center', justifyContent: 'center' }}>
                             <Ionicons name="arrow-back" size={20} color={theme.colors.primary} />
                         </TouchableOpacity>
-                        <TouchableOpacity onPress={handleNext} activeOpacity={0.85} style={{ flex: 1, height: 54, borderRadius: 16, backgroundColor: theme.colors.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                        <TouchableOpacity onPress={handleNext} disabled={dateUnavailable} activeOpacity={0.85} style={{ flex: 1, height: 54, borderRadius: 16, backgroundColor: theme.colors.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, opacity: dateUnavailable ? 0.4 : 1 }}>
                             <Text style={{ fontSize: 15, fontWeight: '900', color: '#1a1a1a', letterSpacing: 0.2 }}>{isLastStep ? 'Book Service' : 'Continue'}</Text>
                             <Ionicons name={isLastStep ? 'checkmark-circle' : 'arrow-forward'} size={18} color="#1a1a1a" />
                         </TouchableOpacity>

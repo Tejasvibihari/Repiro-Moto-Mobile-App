@@ -34,6 +34,7 @@ import { getImageUrl } from '../../utils/imageUtils';
 import MechanicRatingCard from '../../components/orders/MechanicRatingCard';
 import OrderSupportCard from '../../components/orders/OrderSupportCard';
 import { shareInvoicePdf, downloadInvoicePdf } from '../../utils/invoiceUtils';
+import { isBookingPolicyError } from '../../services/bookingAvailability';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -1742,6 +1743,7 @@ export default function OrderDetailScreen({ route, navigation }) {
     const [refreshing, setRefreshing] = useState(false);
     const [reasonModalVisible, setReasonModalVisible] = useState(false);
     const [rescheduleModalVisible, setRescheduleModalVisible] = useState(false);
+    const [rescheduleError, setRescheduleError] = useState(null);
     const [rescheduleSuccessVisible, setRescheduleSuccessVisible] = useState(false);
     const [successModalVisible, setSuccessModalVisible] = useState(false);
     const [errorModalVisible, setErrorModalVisible] = useState(false);
@@ -1770,7 +1772,10 @@ export default function OrderDetailScreen({ route, navigation }) {
 
     const handleCancelPress = () => setReasonModalVisible(true);
 
-    const handleReschedulePress = () => setRescheduleModalVisible(true);
+    const handleReschedulePress = () => {
+        setRescheduleError(null);
+        setRescheduleModalVisible(true);
+    };
 
     const handleRescheduleSubmit = async ({ preferredDate, preferredTime, reason }) => {
         try {
@@ -1779,6 +1784,11 @@ export default function OrderDetailScreen({ route, navigation }) {
             setRescheduleSuccessVisible(true);
         } catch (err) {
             const msg = err.response?.data?.message || 'Failed to reschedule booking';
+            if (isBookingPolicyError(err)) {
+                setRescheduleError(msg);
+                fetchOrderById(orderId).catch(() => { });
+                return;
+            }
             setErrorMessage(msg);
             setRescheduleModalVisible(false);
             setErrorModalVisible(true);
@@ -1948,6 +1958,7 @@ export default function OrderDetailScreen({ route, navigation }) {
                 isDark={isDark}
                 currentDate={order.preferredDate}
                 currentTime={order.preferredTime}
+                errorMessage={rescheduleError}
                 subtitle="You can reschedule until the mechanic arrives."
                 reasonPlaceholder="Let us know why you're changing the time"
             />

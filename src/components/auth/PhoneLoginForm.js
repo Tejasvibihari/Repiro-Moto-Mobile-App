@@ -17,6 +17,9 @@ let LinearGradient = null;
 try { LinearGradient = require('expo-linear-gradient').LinearGradient; } catch (_) { }
 
 const OTP_LENGTH = 6;
+const RESEND_SECONDS = 60;   // the server enforces a 1-minute gap between two codes for the same number
+
+const fmt = (sec) => `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
 
 /**
  * Props:
@@ -39,6 +42,7 @@ export default function PhoneLoginForm({ onAuthenticated, initialPhone = '', aut
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState('');
     const [cooldown, setCooldown] = useState(0);
+    const [sentTo, setSentTo] = useState('');            // the number the running cool-down belongs to
     const [focus, setFocus] = useState(false);
 
     const confirmationRef = useRef(null);
@@ -48,10 +52,14 @@ export default function PhoneLoginForm({ onAuthenticated, initialPhone = '', aut
 
     const fail = useCallback((msg) => { setError(msg); onError?.(msg); }, [onError]);
 
-    // resend countdown
+    // resend countdown — runs against a deadline, so it stays right if the app was in the background
+    const cooldownEndsAt = useRef(0);
     useEffect(() => {
         if (cooldown <= 0) return undefined;
-        const t = setTimeout(() => setCooldown((c) => c - 1), 1000);
+        const t = setTimeout(() => {
+            const left = Math.max(0, Math.ceil((cooldownEndsAt.current - Date.now()) / 1000));
+            setCooldown(Math.max(0, Math.min(cooldown - 1, left)));   // always moves forward; jumps ahead after backgrounding
+        }, 1000);
         return () => clearTimeout(t);
     }, [cooldown]);
 
@@ -73,7 +81,8 @@ export default function PhoneLoginForm({ onAuthenticated, initialPhone = '', aut
 
     // ── send ────────────────────────────────────────────────────────────────
     const goOtp = (ch, seconds) => {
-        setChannel(ch); setOtp(''); setError(''); setCooldown(seconds); setStep('otp');
+        cooldownEndsAt.current = Date.now() + seconds * 1000;
+        setChannel(ch); setOtp(''); setError(''); setCooldown(seconds); setSentTo(phone); setStep('otp');
         setTimeout(() => otpRef.current?.focus(), 250);
     };
 
@@ -81,7 +90,7 @@ export default function PhoneLoginForm({ onAuthenticated, initialPhone = '', aut
         if (!isFirebaseAvailable()) { fail('SMS verification is not available. Please try again later or use email & password.'); return; }
         try {
             confirmationRef.current = await sendFirebaseOtp(phone);
-            goOtp('firebase', 60);
+            goOtp('firebase', RESEND_SECONDS);
         } catch (e) { fail(firebaseErrorMessage(e)); }
     }, [phone, fail]);
 
@@ -92,10 +101,14 @@ export default function PhoneLoginForm({ onAuthenticated, initialPhone = '', aut
         setBusy(true);
         try {
             const d = await sendWhatsAppOtp(phone);
-            goOtp('whatsapp', d?.resendIn || 30);
+            goOtp('whatsapp', d?.resendIn || RESEND_SECONDS);
         } catch (e) {
             const r = e?.response;
-            if (r?.status === 429 && r.data?.retryAfter) goOtp('whatsapp', r.data.retryAfter);   // a code was just sent
+            if (r?.status === 429 && r.data?.retryAfter) {
+                // Server says "wait": show its real remaining time instead of letting the user keep tapping.
+                if (r.data.retryAfter <= RESEND_SECONDS) goOtp('whatsapp', r.data.retryAfter);   // a code was just sent and is still valid
+                else { cooldownEndsAt.current = Date.now() + r.data.retryAfter * 1000; setSentTo(phone); setCooldown(r.data.retryAfter); fail(r.data.message); }   // hourly cap
+            }
             else if (r?.data?.fallback === 'firebase') await sendViaFirebase();                    // WhatsApp unavailable → SMS
             else fail(r?.data?.message || 'Could not send the code. Please try again.');
         } finally { setBusy(false); }
@@ -151,6 +164,7 @@ export default function PhoneLoginForm({ onAuthenticated, initialPhone = '', aut
 
     // ── UI ──────────────────────────────────────────────────────────────────
     if (step === 'phone') {
+        const waiting = cooldown > 0 && phone === sentTo;   // same number is still cooling down
         return (
             <View style={[s.card, theme.shadow.soft]}>
                 <View style={s.fieldGroup}>
@@ -176,7 +190,7 @@ export default function PhoneLoginForm({ onAuthenticated, initialPhone = '', aut
                     </View>
                     {!!error && <Text style={s.errorText}>{error}</Text>}
                 </View>
-                {cta('Get code on WhatsApp', sendCode, phone.length < 10)}
+                {cta(waiting ? `Wait ${fmt(cooldown)}` : 'Get code on WhatsApp', sendCode, phone.length < 10 || waiting)}
                 <Text style={s.hint}>New here? We'll create your account automatically.</Text>
             </View>
         );
@@ -217,11 +231,11 @@ export default function PhoneLoginForm({ onAuthenticated, initialPhone = '', aut
                     <TouchableOpacity onPress={pasteCode} hitSlop={8}><Text style={[s.link, { color: C.primary }]}>Paste code</Text></TouchableOpacity>
                 )}
                 <TouchableOpacity onPress={sendCode} disabled={cooldown > 0 || busy || channel === 'firebase'} hitSlop={8} style={channel === 'firebase' ? { display: 'none' } : undefined}>
-                    <Text style={[s.link, { color: cooldown > 0 ? C.textMuted : C.primary }]}>{cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend on WhatsApp'}</Text>
+                    <Text style={[s.link, { color: cooldown > 0 ? C.textMuted : C.primary }]}>{cooldown > 0 ? `Resend in ${fmt(cooldown)}` : 'Resend on WhatsApp'}</Text>
                 </TouchableOpacity>
                 {channel === 'firebase' && (
                     <TouchableOpacity onPress={useSmsInstead} disabled={cooldown > 0 || busy} hitSlop={8}>
-                        <Text style={[s.link, { color: cooldown > 0 ? C.textMuted : C.primary }]}>{cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend SMS'}</Text>
+                        <Text style={[s.link, { color: cooldown > 0 ? C.textMuted : C.primary }]}>{cooldown > 0 ? `Resend in ${fmt(cooldown)}` : 'Resend SMS'}</Text>
                     </TouchableOpacity>
                 )}
             </View>

@@ -10,25 +10,12 @@ import {
     TextInput, ActivityIndicator, StyleSheet, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { checkBookingAvailability, isBookingPolicyError } from '../../services/bookingAvailability';
+import { BOOKING_TIME_SLOTS } from '../../services/bookingTimeSlots';
 
 // Statuses in which a booking can still be rescheduled (mirrors the backend rule).
 export const RESCHEDULABLE_STATUSES = ['Pending', 'Mechanic Assigned'];
 export const canRescheduleStatus = (status) => RESCHEDULABLE_STATUSES.includes(status);
-
-const TIME_SLOTS = [
-    { label: '8 AM', value: '08:00 AM', h: 8 },
-    { label: '9 AM', value: '09:00 AM', h: 9 },
-    { label: '10 AM', value: '10:00 AM', h: 10 },
-    { label: '11 AM', value: '11:00 AM', h: 11 },
-    { label: '12 PM', value: '12:00 PM', h: 12 },
-    { label: '1 PM', value: '01:00 PM', h: 13 },
-    { label: '2 PM', value: '02:00 PM', h: 14 },
-    { label: '3 PM', value: '03:00 PM', h: 15 },
-    { label: '4 PM', value: '04:00 PM', h: 16 },
-    { label: '5 PM', value: '05:00 PM', h: 17 },
-    { label: '6 PM', value: '06:00 PM', h: 18 },
-    { label: '7 PM', value: '07:00 PM', h: 19 },
-];
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTH_LABELS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -65,17 +52,23 @@ export default function RescheduleModal({
     subtitle = 'Choose a new date and time slot.',
     reasonLabel = 'Reason (optional)',
     reasonPlaceholder = 'Why is the booking being moved?',
+    errorMessage = null,
 }) {
     const C = theme.colors;
     const [selectedYmd, setSelectedYmd] = useState(null);
     const [selectedTime, setSelectedTime] = useState(null);
     const [reason, setReason] = useState('');
+    const [availabilityError, setAvailabilityError] = useState(null);
+    const [unavailableDates, setUnavailableDates] = useState({});
+    const [checkingDate, setCheckingDate] = useState(null);
 
     useEffect(() => {
         if (visible) {
             setSelectedYmd(null);
             setSelectedTime(null);
             setReason('');
+            setAvailabilityError(null);
+            setUnavailableDates({});
         }
     }, [visible]);
 
@@ -90,14 +83,13 @@ export default function RescheduleModal({
 
     const isSlotPassed = (ymd, slot) => {
         if (ymd !== toYmd(new Date())) return false;
-        // Require at least the top of the slot hour to still be ahead of "now"
-        return slot.h * 60 <= new Date().getHours() * 60 + new Date().getMinutes();
+        return slot.h * 60 + slot.m <= new Date().getHours() * 60 + new Date().getMinutes();
     };
 
     // If the chosen day changes and the chosen time is no longer valid, clear it
     useEffect(() => {
         if (!selectedYmd || !selectedTime) return;
-        const slot = TIME_SLOTS.find((s) => s.value === selectedTime);
+        const slot = BOOKING_TIME_SLOTS.find((s) => s.value === selectedTime);
         if (slot && isSlotPassed(selectedYmd, slot)) setSelectedTime(null);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedYmd]);
@@ -105,11 +97,56 @@ export default function RescheduleModal({
     const currentYmd = isoToYmd(currentDate);
     const currentTimeNorm = normalizeTime(currentTime);
     const isSameAsCurrent = selectedYmd === currentYmd && selectedTime === currentTimeNorm;
-    const canSubmit = !!selectedYmd && !!selectedTime && !isSameAsCurrent && !loading;
+    const dateUnavailable = !!selectedYmd && (!!unavailableDates[selectedYmd] || checkingDate === selectedYmd);
+    const canSubmit = !!selectedYmd && !!selectedTime && !isSameAsCurrent && !dateUnavailable && !loading;
 
-    const handleSubmit = () => {
+    const checkDate = async (date) => {
+        setCheckingDate(date);
+        setAvailabilityError(null);
+        try {
+            const result = await checkBookingAvailability(date);
+            if (!result.available) {
+                setUnavailableDates((prev) => ({ ...prev, [date]: result }));
+                setAvailabilityError(result.message);
+                return false;
+            }
+            setUnavailableDates((prev) => {
+                const next = { ...prev };
+                delete next[date];
+                return next;
+            });
+            return true;
+        } catch (err) {
+            if (isBookingPolicyError(err)) {
+                setUnavailableDates((prev) => ({ ...prev, [date]: err.response.data }));
+                setAvailabilityError(err.response.data.message);
+                return false;
+            }
+            return true;
+        } finally {
+            setCheckingDate(null);
+        }
+    };
+
+    const handleDateSelect = async (date) => {
+        setSelectedYmd(date);
+        setSelectedTime(null);
+        await checkDate(date);
+    };
+
+    const handleSubmit = async () => {
         if (!canSubmit) return;
-        onSubmit({ preferredDate: selectedYmd, preferredTime: selectedTime, reason: reason.trim() });
+        if (!(await checkDate(selectedYmd))) return;
+        try {
+            await onSubmit({ preferredDate: selectedYmd, preferredTime: selectedTime, reason: reason.trim() });
+        } catch (err) {
+            if (isBookingPolicyError(err)) {
+                setUnavailableDates((prev) => ({ ...prev, [selectedYmd]: err.response.data }));
+                setAvailabilityError(err.response.data.message);
+                return;
+            }
+            throw err;
+        }
     };
 
     return (
@@ -152,21 +189,25 @@ export default function RescheduleModal({
                             {days.map(({ date, ymd, isToday }) => {
                                 const selected = selectedYmd === ymd;
                                 const weekend = date.getDay() === 0 || date.getDay() === 6;
+                                const unavailable = unavailableDates[ymd];
+                                const checking = checkingDate === ymd;
                                 return (
                                     <TouchableOpacity
                                         key={ymd}
                                         activeOpacity={0.8}
-                                        onPress={() => setSelectedYmd(ymd)}
+                                        onPress={() => handleDateSelect(ymd)}
+                                        disabled={checking}
                                         style={[
                                             s.dateChip,
                                             {
                                                 borderColor: selected ? C.primary : isToday ? C.primary + '88' : weekend ? C.warning + '55' : C.border,
                                                 backgroundColor: selected ? C.primary : C.surfaceLow,
+                                                opacity: unavailable ? 0.45 : 1,
                                             },
                                         ]}
                                     >
                                         <Text style={[s.dateDay, { color: selected ? '#1a1a1a' : C.textMuted }]}>
-                                            {isToday ? 'Today' : DAY_LABELS[date.getDay()]}
+                                            {checking ? '...' : isToday ? 'Today' : DAY_LABELS[date.getDay()]}
                                         </Text>
                                         <Text style={[s.dateNum, { color: selected ? '#1a1a1a' : C.textPrimary }]}>{date.getDate()}</Text>
                                         <Text style={[s.dateMonth, { color: selected ? '#1a1a1a' : C.textMuted }]}>
@@ -176,6 +217,11 @@ export default function RescheduleModal({
                                 );
                             })}
                         </ScrollView>
+                        {(availabilityError || errorMessage) && (
+                            <Text style={[s.policyError, { color: C.error || '#D64545' }]}>
+                                {availabilityError || errorMessage}
+                            </Text>
+                        )}
 
                         {/* Time slots */}
                         <Text style={[s.sectionLabel, { color: C.textMuted, marginTop: 16 }]}>NEW TIME SLOT</Text>
@@ -183,14 +229,15 @@ export default function RescheduleModal({
                             <Text style={[s.hint, { color: C.textMuted }]}>Pick a date first.</Text>
                         ) : (
                             <View style={s.timeWrap}>
-                                {TIME_SLOTS.map((slot) => {
+                                {BOOKING_TIME_SLOTS.map((slot) => {
                                     const passed = isSlotPassed(selectedYmd, slot);
                                     const selected = selectedTime === slot.value;
                                     const isCurrent = selectedYmd === currentYmd && slot.value === currentTimeNorm;
+                                    const disabled = passed || dateUnavailable;
                                     return (
                                         <TouchableOpacity
                                             key={slot.value}
-                                            disabled={passed}
+                                            disabled={disabled}
                                             activeOpacity={0.8}
                                             onPress={() => setSelectedTime(slot.value)}
                                             style={[
@@ -198,7 +245,7 @@ export default function RescheduleModal({
                                                 {
                                                     borderColor: selected ? C.primary : C.border,
                                                     backgroundColor: selected ? C.primary : C.surfaceLow,
-                                                    opacity: passed ? 0.35 : 1,
+                                                    opacity: disabled ? 0.35 : 1,
                                                 },
                                             ]}
                                         >
@@ -283,6 +330,7 @@ const s = StyleSheet.create({
     timeChip: { minWidth: 72, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1.5, alignItems: 'center' },
     timeText: { fontSize: 13, fontWeight: '800' },
     currentTag: { fontSize: 8, fontWeight: '700', marginTop: 1, textTransform: 'uppercase' },
+    policyError: { fontSize: 12, lineHeight: 17, fontWeight: '600', marginTop: 8 },
     reasonInput: {
         minHeight: 64, borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10,
         fontSize: 13, textAlignVertical: 'top',
