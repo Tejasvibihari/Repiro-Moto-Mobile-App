@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 
-const fmt = (n) => `₹${Number(n ?? 0).toLocaleString('en-IN')}`;
+const fmt = (n) => `₹${Number(n ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 const fmtDate = (d) => d
     ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
     : '—';
@@ -404,4 +404,4 @@ const m = StyleSheet.create({
     },
     submitInner: { flexDirection: 'row', alignItems: 'center', gap: 8 },
     submitLabel: { fontSize: 14, fontWeight: '800', letterSpacing: 1.4, textTransform: 'uppercase' },
-});
+});

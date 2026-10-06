@@ -7,7 +7,7 @@ import React, { useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, Animated } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 
-const fmt = (n) => `₹${Number(n ?? 0).toLocaleString('en-IN')}`;
+const fmt = (n) => `₹${Number(n ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 
 // ─── Single tile ──────────────────────────────────────────────────────────────
 function Tile({ icon, value, label, accent, C, isDark, delay }) {
@@ -101,7 +101,7 @@ export default function ReferralStatsRow({ stats, canWithdraw, C, isDark }) {
                 />
                 <Tile
                     icon="bank-transfer-out"
-                    value={fmt(stats.totalWithdrawn)}
+                    value={fmt(canWithdraw ? stats.totalWithdrawn : stats.totalUsed)}
                     label={canWithdraw ? 'Withdrawn' : 'Used'}
                     accent="#FF6B6B"
                     C={C} isDark={isDark} delay={240}
@@ -120,4 +120,4 @@ const row = StyleSheet.create({
         flexDirection: 'row',    // ✅ places two tiles side by side in each row
         gap: 8,
     },
-});
+});

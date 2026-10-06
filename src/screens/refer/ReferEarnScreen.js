@@ -56,24 +56,26 @@ const tb = StyleSheet.create({
 
 // ─── Overview tab ─────────────────────────────────────────────────────────────
 function OverviewTab({ stats, canWithdraw, C, isDark }) {
-    const conv = stats.totalReferrals > 0
-        ? ((stats.activeReferrals / stats.totalReferrals) * 100).toFixed(1) : '0.0';
+    const conv = stats.conversionRate;
     const avg = stats.totalReferrals > 0
-        ? Math.round(stats.totalEarnings / stats.totalReferrals) : 0;
+        ? (stats.totalEarnings / stats.totalReferrals).toLocaleString('en-IN', { maximumFractionDigits: 2 }) : '0';
     const Row = ({ label, value, vc }) => (
         <View style={ov.row}>
             <Text style={[ov.rl, { color: C.textSecondary }]}>{label}</Text>
             <Text style={[ov.rv, { color: vc ?? C.textPrimary }]}>{value}</Text>
         </View>
     );
-    const fmt = (n) => `₹${Number(n ?? 0).toLocaleString('en-IN')}`;
+    const fmt = (n) => `₹${Number(n ?? 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
     return (
         <View style={{ gap: 14 }}>
             <View style={[ov.card, { backgroundColor: isDark ? '#141210' : '#F8F5EF', borderColor: C.border }]}>
                 <Text style={[ov.ct, { color: C.textMuted }]}>EARNINGS BREAKDOWN</Text>
                 <Row label={canWithdraw ? 'Available Balance' : 'Purchase Credit'} value={fmt(stats.availableAmount)} vc="#2ECC9A" />
                 <Row label="Pending Amount" value={fmt(stats.pendingAmount)} vc="#E2A731" />
-                <Row label={canWithdraw ? 'Total Withdrawn' : 'Total Used'} value={fmt(stats.totalWithdrawn)} vc="#FF6B6B" />
+                {canWithdraw && stats.heldInWithdrawals > 0 && (
+                    <Row label="In Withdrawal Requests" value={fmt(stats.heldInWithdrawals)} vc="#E2A731" />
+                )}
+                <Row label={canWithdraw ? 'Total Withdrawn' : 'Total Used'} value={fmt(canWithdraw ? stats.totalWithdrawn : stats.totalUsed)} vc="#FF6B6B" />
                 <View style={[ov.div, { backgroundColor: C.border }]} />
                 <View style={ov.row}>
                     <Text style={[ov.rl, { color: C.textPrimary, fontWeight: '800' }]}>Total Earnings</Text>
@@ -91,7 +93,7 @@ function OverviewTab({ stats, canWithdraw, C, isDark }) {
             <View style={[ov.card, { backgroundColor: isDark ? '#141210' : '#F8F5EF', borderColor: C.border }]}>
                 <Text style={[ov.ct, { color: C.textMuted }]}>REFERRAL STATS</Text>
                 <Row label="Total Referrals" value={String(stats.totalReferrals)} />
-                <Row label="Active Referrals" value={String(stats.activeReferrals)} vc="#2ECC9A" />
+                <Row label="Paid Referrals" value={String(stats.activeReferrals)} vc="#2ECC9A" />
                 <Row label="Conversion Rate" value={`${conv}%`} />
                 <Row label="Avg. per Referral" value={`₹${avg}`} />
             </View>
@@ -318,4 +320,4 @@ const s = StyleSheet.create({
     tabContent: { padding: 16 },
     terms: { flexDirection: 'row', alignItems: 'flex-start', gap: 7, opacity: 0.7 },
     termsText: { flex: 1, fontSize: 11, lineHeight: 17 },
-});
+});

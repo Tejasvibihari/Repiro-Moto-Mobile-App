@@ -70,17 +70,34 @@ export default function useReferral() {
     }, [user?._id]);
 
     // ── Derived stats (mirrors web MyReferral userStats) ─────────────────────
+    // All money figures come from the server's own counters (see server/Utils/referral.js) - nothing is
+    // re-derived here, so the screen always matches what the backend will actually deduct / pay.
+    const n2 = (v) => Math.round((Number(v) || 0) * 100) / 100;
+    const heldInWithdrawals = n2(
+        (fullUser?.withdrawalRequests ?? [])
+            .filter((w) => w?.status === 'pending' || w?.status === 'approved')
+            .reduce((sum, w) => sum + (Number(w.amount) || 0), 0)
+    );
+    const available = n2(fullUser?.referralAmount);
+    const withdrawn = n2(fullUser?.totalWithdrawn);
+    const used = n2(fullUser?.totalReferralRedeemed);
+    // Older accounts have no lifetime counter yet: rebuild it from the parts so it never shows less than what exists.
+    const earned = Math.max(n2(fullUser?.totalReferralEarned), n2(available + withdrawn + used + heldInWithdrawals));
+    const paidReferrals = referredUsers.filter((u) => u.referralRewardGranted).length;
+
     const stats = {
-        totalReferrals: referredUsers.length,
-        activeReferrals: referredUsers.filter((u) => u.status === 'approved').length,
-        pendingAmount: fullUser?.pendingReferralAmount ?? 0,
-        availableAmount: fullUser?.referralAmount ?? 0,
-        totalWithdrawn: fullUser?.totalWithdrawn ?? 0,
-        totalEarnings: (fullUser?.referralAmount ?? 0) + (fullUser?.totalWithdrawn ?? 0),
-        conversionRate: referredUsers.length > 0
-            ? ((referredUsers.filter((u) => u.status === 'approved').length / referredUsers.length) * 100).toFixed(1)
-            : '0.0',
+        totalReferrals: Math.max(Number(fullUser?.referralCount) || 0, referredUsers.length),
+        activeReferrals: paidReferrals,                 // referred users who completed a paid order (bonus unlocked)
+        pendingAmount: n2(fullUser?.pendingReferralAmount),
+        availableAmount: available,
+        totalWithdrawn: withdrawn,
+        totalUsed: used,
+        heldInWithdrawals,
+        totalEarnings: earned,
     };
+    stats.conversionRate = stats.totalReferrals > 0
+        ? Math.min(100, (paidReferrals / stats.totalReferrals) * 100).toFixed(1)
+        : '0.0';
 
     // personal = credit only, business = can withdraw cash
     const canWithdraw = user?.accountType === 'business';
@@ -97,4 +114,4 @@ export default function useReferral() {
         refetch,
         submitWithdrawal,
     };
-}
+}
