@@ -33,6 +33,8 @@ import axiosClient from '../../services/axiosClient';
 import { getImageUrl } from '../../utils/imageUtils';
 import MechanicRatingCard from '../../components/orders/MechanicRatingCard';
 import OrderSupportCard from '../../components/orders/OrderSupportCard';
+import LiveTrackingCard from '../../components/orders/LiveTrackingCard';
+import useOrderTracking from '../../hooks/useOrderTracking';
 import { shareInvoicePdf, downloadInvoicePdf } from '../../utils/invoiceUtils';
 import { isBookingPolicyError } from '../../services/bookingAvailability';
 
@@ -51,6 +53,12 @@ const STATUS_STEPS = [
         label: 'Assigned',
         icon: 'account-check-outline',
         desc: 'Mechanic has been assigned',
+    },
+    {
+        key: 'Mechanic Start',
+        label: 'On the way',
+        icon: 'motorbike',
+        desc: 'Mechanic has left and is on the way to you',
     },
     {
         key: 'Mechanic Arrived',
@@ -93,6 +101,7 @@ const STATUS_STEPS = [
 const STATUS_COLORS = {
     'Pending': { bg: 'rgba(226,167,49,0.15)', text: '#E2A731', dot: '#E2A731' },
     'Mechanic Assigned': { bg: 'rgba(91,140,255,0.15)', text: '#5B8CFF', dot: '#5B8CFF' },
+    'Mechanic Start': { bg: 'rgba(91,140,255,0.15)', text: '#5B8CFF', dot: '#5B8CFF' },
     'Mechanic Arrived': { bg: 'rgba(140,91,255,0.15)', text: '#8C5BFF', dot: '#8C5BFF' },
     'In Progress': { bg: 'rgba(255,165,0,0.15)', text: '#FFA500', dot: '#FFA500' },
     'Completion Requested': { bg: 'rgba(255,107,107,0.12)', text: '#FF6B6B', dot: '#FF6B6B' },
@@ -1764,6 +1773,13 @@ export default function OrderDetailScreen({ route, navigation }) {
         if (orderId) fetchOrderById(orderId);
     }, [orderId, fetchOrderById]);
 
+    // Live mechanic location + ETA — polls only while the mechanic is on the way and this screen is open
+    const { data: tracking, error: trackingError } = useOrderTracking(
+        orderId,
+        order?.status === 'Mechanic Start',
+        () => fetchOrderById(orderId).catch(() => { }),   // status moved on (arrived / cancelled) → reload
+    );
+
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
         await fetchOrderById(orderId);
@@ -1877,6 +1893,11 @@ export default function OrderDetailScreen({ route, navigation }) {
                     onViewInvoice={handleViewInvoice}
                     onPay={handlePayNow}
                 />
+
+                {/* Live tracking — mechanic on the way */}
+                {order.status === 'Mechanic Start' && (
+                    <LiveTrackingCard tracking={tracking} error={trackingError} C={C} isDark={isDark} />
+                )}
 
                 {/* Progress stepper */}
                 <OrderProgressStepper status={order.status} C={C} isDark={isDark} />

@@ -27,6 +27,13 @@ const STATUS_CONFIG = {
         badgeBorder: 'rgba(123,104,238,0.25)',
         textColor: '#7B68EE',
     },
+    mechanic_start: {
+        label: 'ON THE WAY',
+        dotColor: '#5B8CFF',
+        badgeBg: 'rgba(91,140,255,0.12)',
+        badgeBorder: 'rgba(91,140,255,0.25)',
+        textColor: '#5B8CFF',
+    },
     mechanic_arrived: {
         label: 'MECHANIC ARRIVED',
         dotColor: '#4A90E2',

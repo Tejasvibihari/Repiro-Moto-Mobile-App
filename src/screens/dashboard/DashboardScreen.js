@@ -280,6 +280,7 @@ const qa = StyleSheet.create({
 const ORDER_STATUS_CFG = {
     'pending': { color: '#E2A731', icon: 'clock-outline', label: 'Pending' },
     'mechanic assigned': { color: '#5B8CFF', icon: 'account-hard-hat', label: 'Mechanic Assigned' },
+    'mechanic start': { color: '#5B8CFF', icon: 'motorbike', label: 'On the way' },
     'mechanic arrived': { color: '#5B8CFF', icon: 'car-clock-outline', label: 'Mechanic Arrived' },
     'in progress': { color: '#5B8CFF', icon: 'progress-wrench', label: 'In Progress' },
     'work completed': { color: '#2ECC9A', icon: 'check-circle-outline', label: 'Work Completed' },

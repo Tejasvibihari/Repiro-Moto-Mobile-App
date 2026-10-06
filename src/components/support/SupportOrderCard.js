@@ -21,6 +21,7 @@ import { LightTheme, DarkTheme } from '../../styles/Theme';
 const STATUS_META = {
     'Pending': { label: 'Pending', color: '#e2a731', icon: 'time' },
     'Mechanic Assigned': { label: 'Mechanic Assigned', color: '#3498db', icon: 'person' },
+    'Mechanic Start': { label: 'On the way', color: '#3498db', icon: 'navigate' },
     'Mechanic Arrived': { label: 'Mechanic Arrived', color: '#2ecc71', icon: 'location' },
     'In Progress': { label: 'In Progress', color: '#5B9CF6', icon: 'construct' },
     'Work Completed': { label: 'Work Completed', color: '#9b59b6', icon: 'checkmark-done' },
