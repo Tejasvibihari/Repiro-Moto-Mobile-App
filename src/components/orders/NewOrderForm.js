@@ -15,7 +15,7 @@ import {
     StatusBar,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { useSelector } from 'react-redux';
+import { useSelector, useDispatch } from 'react-redux';
 import { LightTheme, DarkTheme } from '../../styles/Theme';
 import axiosClient from '../../services/axiosClient';
 import {
@@ -25,7 +25,10 @@ import {
     searchPlaces,
     formatAddress,
     cityOf,
+    distanceMeters,
 } from '../../services/locationService';
+import { updateLocationAnchor } from '../../store/slices/locationSlice';
+import { useMovedFromPoint } from '../../hooks/useMovedFromPoint';
 import Alert from '../../components/common/Alert';
 import useBike from '../../hooks/useBikes';
 import useCoupon from '../../hooks/useCoupon';
@@ -533,9 +536,13 @@ function SavedBikeCard({ bike, selected, onPress, theme, isDark }) {
     );
 }
 
-// ─── Location step (unchanged) ────────────────────────────────────────────────
+// ─── Location step ────────────────────────────────────────────────────────────
+// Uses the location resolved when the app was opened (kept in redux) instead of
+// fetching GPS / address / serviceability again. A fresh fetch only happens when
+// the user taps "Update location" (shown only if they moved) or if nothing is
+// stored yet. Going back to this step never re-fetches either.
 function LocationStep({
-    theme, isDark, locationText, setLocationText, setCoords,
+    theme, isDark, locationText, setLocationText, coords, setCoords,
     isServiceable, setIsServiceable, onCityChange, onDistanceChange, onNext,
 }) {
     const [loading, setLoading] = useState(false);
@@ -563,11 +570,28 @@ function LocationStep({
     const searchSeq = useRef(0);
     const manualSeq = useRef(0);
 
-    // Position the gate already resolved on app start (avoids a second GPS wait).
-    const gateCoords = useSelector((s) => s.location?.coords);
-    const gateCheckedAt = useSelector((s) => s.location?.checkedAt);
+    const dispatch = useDispatch();
+    // Location resolved when the app was opened (see useLocationCheck).
+    const gate = useSelector((s) => s.location);
 
-    useEffect(() => { autoDetect(); }, []);
+    // The selection is "auto" while it is still exactly the GPS fix from app open
+    // / last relocate. Manually picked places are never second-guessed.
+    const isAuto =
+        !!coords && gate?.source === 'device' && distanceMeters(coords, gate?.coords) < 5;
+    const { moved, clear: clearMoved } = useMovedFromPoint(isAuto ? coords : null);
+
+    useEffect(() => {
+        // Coming back to this step: the parent still holds the selection.
+        if (coords) {
+            setPinCoords(coords);
+            setMapRegion({ ...coords, latitudeDelta: 0.01, longitudeDelta: 0.01 });
+            return;
+        }
+        // First open: reuse what the app already knows – no GPS, no spinner.
+        if (gate?.coords && gate.lastServiceable === true) { hydrateFromGate(); return; }
+        // Nothing stored (should be rare): fall back to a real detection.
+        autoDetect();
+    }, []);
     useEffect(() => {
         return () => {
             if (checkTimeout.current) clearTimeout(checkTimeout.current);
@@ -591,6 +615,7 @@ function LocationStep({
             setIsServiceable(ok);
             if (data?.distance !== undefined) onDistanceChange(data.distance);
             if (!ok) setAlert({ type: 'error', message: data?.message || "Sorry, we don't service this area yet." });
+            return data;
         } catch {
             if (seq !== checkSeq.current) return;
             setIsServiceable(false);
@@ -598,26 +623,58 @@ function LocationStep({
         } finally { if (seq === checkSeq.current) setChecking(false); }
     };
 
+    // Fills the form from the location stored at app open. Zero GPS, zero spinner;
+    // only the pieces that are genuinely missing are looked up (both are cached).
+    const hydrateFromGate = () => {
+        const { latitude, longitude } = gate.coords;
+        setCoords({ latitude, longitude });
+        setPinCoords({ latitude, longitude });
+        setMapRegion({ latitude, longitude, latitudeDelta: 0.01, longitudeDelta: 0.01 });
+        setIsServiceable(true);
+        if (gate.distance != null) onDistanceChange(gate.distance);
+        else checkArea(latitude, longitude);          // old cache without distance
+        if (gate.address) {
+            setLocationText(gate.address);
+            if (gate.city) onCityChange(gate.city);
+        } else {
+            reverseGeocode(latitude, longitude).then((g) => {
+                if (!g) return;
+                setLocationText(formatAddress(g));
+                onCityChange(cityOf(g));
+            });
+        }
+    };
+
+    // Explicit "get my location again": always a fresh fix (never the cached one).
     const autoDetect = async () => {
         setLoading(true);
         setIsServiceable(null);
         setLocationUnavailable(false);
+        clearMoved();
         try {
-            // Reuse the app-start position if it is recent; otherwise get a fast fix.
-            const gateFresh = gateCoords && gateCheckedAt && Date.now() - gateCheckedAt < 10 * 60 * 1000;
-            const pos = gateFresh ? gateCoords : await getFastPosition();
-            const { latitude, longitude } = pos;
+            const { latitude, longitude } = await getFastPosition({ allowCached: false });
             setCoords({ latitude, longitude });
             setPinCoords({ latitude, longitude });
             setMapRegion({ latitude, longitude, latitudeDelta: 0.01, longitudeDelta: 0.01 });
             // Address lookup and serviceability check are independent: run together.
-            const [g] = await Promise.all([
+            const [g, data] = await Promise.all([
                 reverseGeocode(latitude, longitude),
                 checkArea(latitude, longitude),
             ]);
             if (g) {
                 setLocationText(formatAddress(g));
                 onCityChange(cityOf(g));
+            }
+            // Remember it, so the next booking starts from here (and the
+            // "moved" check compares against this spot).
+            if (data) {
+                dispatch(updateLocationAnchor({
+                    coords: { latitude, longitude },
+                    city: g ? cityOf(g) || null : null,
+                    address: g ? formatAddress(g) : null,
+                    distance: data.distance ?? null,
+                    serviceable: !!data.serviceable,
+                }));
             }
         } catch (err) {
             setLocationUnavailable(true);
@@ -744,13 +801,21 @@ function LocationStep({
                                 {isServiceable === true && <Text style={{ fontSize: 12, color: theme.colors.success, fontWeight: '700', marginTop: 3 }}>✓ Area is serviceable</Text>}
                                 {isServiceable === false && <Text style={{ fontSize: 12, color: theme.colors.error, fontWeight: '700', marginTop: 3 }}>✗ Not serviceable yet</Text>}
                             </View>
-                            <TouchableOpacity onPress={autoDetect} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-                                <Ionicons name="refresh" size={20} color={theme.colors.primary} />
-                            </TouchableOpacity>
                         </>
                     )}
                 </View>
             </View>
+
+            {moved && !loading && !locationUnavailable && (
+                <TouchableOpacity onPress={autoDetect} activeOpacity={0.85} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 14, paddingVertical: 12, borderRadius: 16, borderWidth: 1.5, borderColor: theme.colors.primary + '55', backgroundColor: theme.colors.primary + (isDark ? '18' : '0D'), marginTop: -6, marginBottom: 16 }}>
+                    <Ionicons name="navigate" size={20} color={theme.colors.primary} />
+                    <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: theme.colors.textPrimary }}>You've moved since you opened the app</Text>
+                        <Text style={{ fontSize: 12, color: theme.colors.textMuted, fontWeight: '500', marginTop: 2 }}>Tap to use your current location</Text>
+                    </View>
+                    <Text style={{ fontSize: 13, fontWeight: '800', color: theme.colors.primary }}>Update</Text>
+                </TouchableOpacity>
+            )}
 
             {locationUnavailable && (
                 <View style={{ gap: 10, marginBottom: 20 }}>
@@ -1427,7 +1492,7 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
                         <LocationStep
                             theme={theme} isDark={isDark}
                             locationText={locationText} setLocationText={setLocationText}
-                            setCoords={setCoords}
+                            coords={coords} setCoords={setCoords}
                             isServiceable={isServiceable} setIsServiceable={setIsServiceable}
                             onCityChange={setCity}
                             onDistanceChange={setDistanceFromCenter}

@@ -142,7 +142,7 @@ export default function NotServiceableScreen({ onRetry }) {
      *
      * On failure: shows inline error banner. No Redux change.
      */
-    const checkAndDispatch = async (latitude, longitude, detectedCity = null) => {
+    const checkAndDispatch = async (latitude, longitude, detectedCity = null, source = "device") => {
         setChecking(true);
         setStatusMsg(null);
         try {
@@ -151,9 +151,15 @@ export default function NotServiceableScreen({ onRetry }) {
             if (ok) {
                 setStatusMsg({ type: "success", text: "Great news! We service this area. Loading…" });
                 // Prefer the geocoded city; fall back to the service-area name.
-                const resolvedCity =
-                    detectedCity || cityOf(await reverseGeocode(latitude, longitude)) || data?.area || null;
-                dispatch(setServiceable({ coords: { latitude, longitude }, city: resolvedCity }));
+                const g = await reverseGeocode(latitude, longitude);
+                const resolvedCity = detectedCity || cityOf(g) || data?.area || null;
+                dispatch(setServiceable({
+                    coords: { latitude, longitude },
+                    city: resolvedCity,
+                    address: formatAddress(g) || null,
+                    distance: data?.distance ?? null,
+                    source,
+                }));
             } else {
                 setStatusMsg({ type: "error", text: data?.message || "Sorry, we don't service this area yet." });
             }
@@ -165,7 +171,7 @@ export default function NotServiceableScreen({ onRetry }) {
     const handleSelectResult = async (result) => {
         setQuery(result.label);
         setResults([]);
-        await checkAndDispatch(result.latitude, result.longitude, result.city);
+        await checkAndDispatch(result.latitude, result.longitude, result.city, "manual");
     };
 
     // ── Open map ──────────────────────────────────────────────────────────────
@@ -286,6 +292,9 @@ export default function NotServiceableScreen({ onRetry }) {
         dispatch(setServiceable({
             coords: { latitude: pinCoords.latitude, longitude: pinCoords.longitude },
             city: mapCityText || null,
+            address: mapLocationText || null,
+            distance: null,
+            source: "manual",
         }));
     };
 

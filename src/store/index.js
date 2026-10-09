@@ -22,7 +22,7 @@ const persistedAuthReducer = persistReducer(authPersistConfig, authReducer);
 const locationPersistConfig = {
     key: "location",
     storage: AsyncStorage,
-    whitelist: ["coords", "city", "lastServiceable", "checkedAt"],
+    whitelist: ["coords", "city", "lastServiceable", "checkedAt", "address", "distance", "source"],
 };
 
 const persistedLocationReducer = persistReducer(locationPersistConfig, locationReducer);

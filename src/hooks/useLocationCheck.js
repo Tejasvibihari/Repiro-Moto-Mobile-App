@@ -4,9 +4,16 @@ import {
     setChecking,
     setServiceable,
     setNotServiceable,
+    setLocationAddress,
     setLocationError,
 } from "../store/slices/locationSlice";
-import { getFastPosition, checkServiceability } from "../services/locationService";
+import {
+    getFastPosition,
+    checkServiceability,
+    reverseGeocode,
+    formatAddress,
+    cityOf,
+} from "../services/locationService";
 
 // A cached "serviceable" result younger than this opens the app instantly;
 // the check still re-runs silently in the background.
@@ -40,8 +47,25 @@ export function useLocationCheck() {
 
                 // 2. Serviceability (cached + de-duplicated in the service)
                 const result = await checkServiceability(latitude, longitude);
-                const payload = { coords: { latitude, longitude }, city: result.area || null };
+                const coords = { latitude, longitude };
+                const payload = {
+                    coords,
+                    city: result.area || null,
+                    distance: result.distance ?? null,
+                    source: "device",
+                };
                 dispatch(result.serviceable ? setServiceable(payload) : setNotServiceable(payload));
+
+                // 3. Address, in the background (never blocks the gate). Stored so
+                //    the booking screen can show it instantly instead of re-fetching.
+                reverseGeocode(latitude, longitude).then((g) => {
+                    if (!g) return;
+                    dispatch(setLocationAddress({
+                        coords,
+                        address: formatAddress(g),
+                        city: cityOf(g) || null,
+                    }));
+                });
             } catch (err) {
                 if (silent) {
                     // Background re-check failed: keep the cached verdict, don't
@@ -71,12 +95,13 @@ export function useLocationCheck() {
     useEffect(() => {
         if (status !== "idle") return;
 
-        const { lastServiceable, checkedAt, coords, city } = store.getState().location;
+        const { lastServiceable, checkedAt, coords, city, address, distance, source } =
+            store.getState().location;
         const cacheFresh = checkedAt && Date.now() - checkedAt < CACHE_FRESH_MS;
 
         if (cacheFresh && lastServiceable === true && coords) {
             // Open instantly from cache, verify in the background.
-            dispatch(setServiceable({ coords, city }));
+            dispatch(setServiceable({ coords, city, address, distance, source }));
             checkLocation({ silent: true });
         } else {
             checkLocation({ silent: false });

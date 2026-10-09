@@ -113,6 +113,40 @@ export async function getFastPosition({ allowCached = true } = {}) {
     throw new Error("position_unavailable");
 }
 
+/**
+ * Cheap, silent peek at where the device is NOW (used only to decide whether to
+ * offer an "Update location" button). Never prompts for permission, never
+ * throws, resolves null when unknown.
+ *   1. OS last-known fix, ≤ 2 min old (free – no GPS wake-up)
+ *   2. one Low-accuracy fix with a short timeout
+ */
+export const MOVED_THRESHOLD_M = 300;
+
+export async function peekPosition({ maxAgeMs = 2 * 60 * 1000, timeoutMs = 6000 } = {}) {
+    try {
+        const perm = await Location.getForegroundPermissionsAsync();
+        if (perm.status !== "granted") return null;
+
+        const last = await Location.getLastKnownPositionAsync({
+            maxAge: maxAgeMs,
+            requiredAccuracy: LAST_KNOWN_REQUIRED_ACCURACY_M,
+        });
+        if (last?.coords) {
+            const { latitude, longitude, accuracy } = last.coords;
+            return { latitude, longitude, accuracy };
+        }
+
+        const fresh = await withTimeout(
+            Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Low }),
+            timeoutMs
+        );
+        const { latitude, longitude, accuracy } = fresh.coords;
+        return { latitude, longitude, accuracy };
+    } catch {
+        return null;
+    }
+}
+
 // ── serviceability ───────────────────────────────────────────────────────────
 const serviceCache = new Map();     // key -> { at, data }
 const serviceInflight = new Map();  // key -> Promise
