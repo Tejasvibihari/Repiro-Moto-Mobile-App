@@ -15,10 +15,17 @@ import {
     StatusBar,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import * as Location from 'expo-location';
 import { useSelector } from 'react-redux';
 import { LightTheme, DarkTheme } from '../../styles/Theme';
 import axiosClient from '../../services/axiosClient';
+import {
+    getFastPosition,
+    checkServiceability,
+    reverseGeocode,
+    searchPlaces,
+    formatAddress,
+    cityOf,
+} from '../../services/locationService';
 import Alert from '../../components/common/Alert';
 import useBike from '../../hooks/useBikes';
 import useCoupon from '../../hooks/useCoupon';
@@ -549,6 +556,16 @@ function LocationStep({
     const searchTimeout = useRef(null);
     const manualSearchTimeout = useRef(null);
     const checkTimeout = useRef(null);
+    // Monotonic tokens: a slow response from an older request must never
+    // overwrite the result of a newer one (map drags / fast typing).
+    const checkSeq = useRef(0);
+    const dragSeq = useRef(0);
+    const searchSeq = useRef(0);
+    const manualSeq = useRef(0);
+
+    // Position the gate already resolved on app start (avoids a second GPS wait).
+    const gateCoords = useSelector((s) => s.location?.coords);
+    const gateCheckedAt = useSelector((s) => s.location?.checkedAt);
 
     useEffect(() => { autoDetect(); }, []);
     useEffect(() => {
@@ -560,26 +577,25 @@ function LocationStep({
     }, []);
 
     const extractCityFromGeocode = async (lat, lng) => {
-        try {
-            const geo = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lng });
-            if (geo.length > 0 && geo[0].city) onCityChange(geo[0].city);
-            else if (geo.length > 0 && geo[0].region) onCityChange(geo[0].region);
-            else onCityChange('');
-        } catch { onCityChange(''); }
+        const g = await reverseGeocode(lat, lng);
+        onCityChange(cityOf(g));
     };
 
     const checkArea = async (lat, lng) => {
+        const seq = ++checkSeq.current;
         setChecking(true);
         try {
-            const res = await axiosClient.post('/api/service-areas/check', { latitude: lat, longitude: lng });
-            const ok = res.data?.serviceable ?? false;
+            const data = await checkServiceability(lat, lng);
+            if (seq !== checkSeq.current) return; // a newer check superseded this one
+            const ok = data?.serviceable ?? false;
             setIsServiceable(ok);
-            if (res.data?.distance !== undefined) onDistanceChange(res.data.distance);
-            if (!ok) setAlert({ type: 'error', message: res.data?.message || "Sorry, we don't service this area yet." });
+            if (data?.distance !== undefined) onDistanceChange(data.distance);
+            if (!ok) setAlert({ type: 'error', message: data?.message || "Sorry, we don't service this area yet." });
         } catch {
+            if (seq !== checkSeq.current) return;
             setIsServiceable(false);
             setAlert({ type: 'error', message: 'Could not verify serviceability.' });
-        } finally { setChecking(false); }
+        } finally { if (seq === checkSeq.current) setChecking(false); }
     };
 
     const autoDetect = async () => {
@@ -587,45 +603,43 @@ function LocationStep({
         setIsServiceable(null);
         setLocationUnavailable(false);
         try {
-            const { status } = await Location.requestForegroundPermissionsAsync();
-            if (status !== 'granted') { setLocationUnavailable(true); setLoading(false); return; }
-            const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-            const { latitude, longitude } = loc.coords;
+            // Reuse the app-start position if it is recent; otherwise get a fast fix.
+            const gateFresh = gateCoords && gateCheckedAt && Date.now() - gateCheckedAt < 10 * 60 * 1000;
+            const pos = gateFresh ? gateCoords : await getFastPosition();
+            const { latitude, longitude } = pos;
             setCoords({ latitude, longitude });
             setPinCoords({ latitude, longitude });
             setMapRegion({ latitude, longitude, latitudeDelta: 0.01, longitudeDelta: 0.01 });
-            const geo = await Location.reverseGeocodeAsync({ latitude, longitude });
-            if (geo.length > 0) {
-                const g = geo[0];
-                setLocationText([g.name, g.streetNumber, g.street, g.district, g.subregion, g.city, g.region, g.postalCode].filter(Boolean).join(', '));
-                if (g.city) onCityChange(g.city);
-                else if (g.region) onCityChange(g.region);
+            // Address lookup and serviceability check are independent: run together.
+            const [g] = await Promise.all([
+                reverseGeocode(latitude, longitude),
+                checkArea(latitude, longitude),
+            ]);
+            if (g) {
+                setLocationText(formatAddress(g));
+                onCityChange(cityOf(g));
             }
-            await checkArea(latitude, longitude);
-        } catch {
+        } catch (err) {
             setLocationUnavailable(true);
-            setAlert({ type: 'error', message: 'Could not detect location. Please enter it manually.' });
+            if (err?.message !== 'permission_denied') {
+                setAlert({ type: 'error', message: 'Could not detect location. Please enter it manually.' });
+            }
         } finally { setLoading(false); }
     };
 
     const handleManualQueryChange = (text) => {
         setManualQuery(text);
         if (manualSearchTimeout.current) clearTimeout(manualSearchTimeout.current);
-        if (!text.trim()) { setManualResults([]); return; }
+        if (!text.trim()) { manualSeq.current++; setManualResults([]); return; }
         manualSearchTimeout.current = setTimeout(async () => {
+            const seq = ++manualSeq.current;
             setManualSearchLoading(true);
             try {
-                const results = await Location.geocodeAsync(text);
-                const named = await Promise.all(results.slice(0, 5).map(async (r) => {
-                    const rev = await Location.reverseGeocodeAsync({ latitude: r.latitude, longitude: r.longitude });
-                    const g = rev[0] || {};
-                    const label = [g.name, g.streetNumber, g.street, g.district, g.subregion, g.city, g.region, g.postalCode].filter(Boolean).join(', ');
-                    return { label, latitude: r.latitude, longitude: r.longitude };
-                }));
-                setManualResults(named);
-            } catch { setManualResults([]); }
-            finally { setManualSearchLoading(false); }
-        }, 600);
+                const named = await searchPlaces(text);
+                if (seq === manualSeq.current) setManualResults(named);
+            } catch { if (seq === manualSeq.current) setManualResults([]); }
+            finally { if (seq === manualSeq.current) setManualSearchLoading(false); }
+        }, 450);
     };
 
     const handleManualSelect = async (result) => {
@@ -634,28 +648,25 @@ function LocationStep({
         setPinCoords({ latitude: result.latitude, longitude: result.longitude });
         setMapRegion({ latitude: result.latitude, longitude: result.longitude, latitudeDelta: 0.01, longitudeDelta: 0.01 });
         setLocationText(result.label);
-        await extractCityFromGeocode(result.latitude, result.longitude);
-        await checkArea(result.latitude, result.longitude);
+        await Promise.all([
+            extractCityFromGeocode(result.latitude, result.longitude),
+            checkArea(result.latitude, result.longitude),
+        ]);
     };
 
     const handleSearchChange = (text) => {
         setSearchQuery(text);
         if (searchTimeout.current) clearTimeout(searchTimeout.current);
-        if (!text.trim()) { setSearchResults([]); return; }
+        if (!text.trim()) { searchSeq.current++; setSearchResults([]); return; }
         searchTimeout.current = setTimeout(async () => {
+            const seq = ++searchSeq.current;
             setSearchLoading(true);
             try {
-                const results = await Location.geocodeAsync(text);
-                const named = await Promise.all(results.slice(0, 5).map(async (r) => {
-                    const rev = await Location.reverseGeocodeAsync({ latitude: r.latitude, longitude: r.longitude });
-                    const g = rev[0] || {};
-                    const label = [g.name, g.streetNumber, g.street, g.district, g.subregion, g.city, g.region, g.postalCode].filter(Boolean).join(', ');
-                    return { label, latitude: r.latitude, longitude: r.longitude };
-                }));
-                setSearchResults(named);
-            } catch { setSearchResults([]); }
-            finally { setSearchLoading(false); }
-        }, 600);
+                const named = await searchPlaces(text);
+                if (seq === searchSeq.current) setSearchResults(named);
+            } catch { if (seq === searchSeq.current) setSearchResults([]); }
+            finally { if (seq === searchSeq.current) setSearchLoading(false); }
+        }, 450);
     };
 
     const handleSearchSelect = (result) => {
@@ -667,21 +678,24 @@ function LocationStep({
         checkArea(result.latitude, result.longitude);
     };
 
-    const handleRegionChangeComplete = async (region) => {
+    const handleRegionChangeComplete = (region) => {
         const { latitude, longitude } = region;
         setPinCoords({ latitude, longitude });
-        try {
-            const geo = await Location.reverseGeocodeAsync({ latitude, longitude });
-            if (geo.length > 0) {
-                const g = geo[0];
-                setLocationText([g.name, g.streetNumber, g.street, g.district, g.subregion, g.city, g.region, g.postalCode].filter(Boolean).join(', '));
-                if (g.city) onCityChange(g.city);
-                else if (g.region) onCityChange(g.region);
-            }
-        } catch { /* silent */ }
-        if (checkTimeout.current) clearTimeout(checkTimeout.current);
         setIsServiceable(null);
-        checkTimeout.current = setTimeout(() => { checkArea(latitude, longitude); }, 800);
+        // One debounced step per drag: address + serviceability fetched together.
+        if (checkTimeout.current) clearTimeout(checkTimeout.current);
+        const seq = ++dragSeq.current;
+        checkTimeout.current = setTimeout(async () => {
+            const [g] = await Promise.all([
+                reverseGeocode(latitude, longitude),
+                checkArea(latitude, longitude),
+            ]);
+            if (seq !== dragSeq.current) return; // user dragged again meanwhile
+            if (g) {
+                setLocationText(formatAddress(g));
+                onCityChange(cityOf(g));
+            }
+        }, 500);
     };
 
     const handleConfirmMapLocation = () => {

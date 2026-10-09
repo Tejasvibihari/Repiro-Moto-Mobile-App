@@ -5,6 +5,10 @@ const initialState = {
     coords: null,          // { latitude, longitude }
     city: null,
     errorMessage: null,
+    // ── persisted cache of the last successful serviceability check ──────────
+    // Lets the app open instantly and re-verify in the background.
+    lastServiceable: null, // boolean | null
+    checkedAt: null,       // epoch ms of the last successful check
 };
 
 const locationSlice = createSlice({
@@ -19,11 +23,16 @@ const locationSlice = createSlice({
             state.status = "serviceable";
             state.coords = action.payload.coords;
             state.city = action.payload.city ?? null;
+            state.lastServiceable = true;
+            state.checkedAt = Date.now();
+            state.errorMessage = null;
         },
         setNotServiceable: (state, action) => {
             state.status = "not_serviceable";
             state.coords = action.payload.coords;
             state.city = action.payload.city ?? null;
+            state.lastServiceable = false;
+            state.checkedAt = Date.now();
         },
         setLocationError: (state, action) => {
             state.status = "error";

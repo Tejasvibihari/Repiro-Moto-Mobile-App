@@ -7,10 +7,17 @@ import {
 import { useSelector, useDispatch } from "react-redux";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
-import * as Location from "expo-location";
 import MapView, { PROVIDER_GOOGLE } from "react-native-maps";
 import { LightTheme, DarkTheme } from "../../styles/Theme";
 import { setServiceable } from "../../store/slices/locationSlice"; // ← dispatch directly, no loop
+import {
+    getFastPosition,
+    checkServiceability,
+    reverseGeocode,
+    searchPlaces,
+    formatAddress,
+    cityOf,
+} from "../../services/locationService";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
@@ -71,6 +78,11 @@ export default function NotServiceableScreen({ onRetry }) {
     const searchTimeout = useRef(null);
     const mapSearchTimeout = useRef(null);
     const mapCheckTimeout = useRef(null);
+    // Tokens so a slow older response never overwrites a newer one.
+    const searchSeq = useRef(0);
+    const mapSearchSeq = useRef(0);
+    const mapCheckSeq = useRef(0);
+    const mapDragSeq = useRef(0);
 
     useEffect(() => {
         return () => {
@@ -80,31 +92,21 @@ export default function NotServiceableScreen({ onRetry }) {
         };
     }, []);
 
-    // ── Shared: load axiosClient ──────────────────────────────────────────────
-    const getAxios = async () => (await import("../../services/axiosClient")).default;
-
     // ── Geocode search (main card) ────────────────────────────────────────────
     const handleQueryChange = (text) => {
         setQuery(text);
         setStatusMsg(null);
         if (searchTimeout.current) clearTimeout(searchTimeout.current);
-        if (!text.trim()) { setResults([]); return; }
+        if (!text.trim()) { searchSeq.current++; setResults([]); return; }
         searchTimeout.current = setTimeout(async () => {
+            const seq = ++searchSeq.current;
             setSearchLoading(true);
             try {
-                const geocoded = await Location.geocodeAsync(text);
-                const named = await Promise.all(
-                    geocoded.slice(0, 5).map(async (r) => {
-                        const rev = await Location.reverseGeocodeAsync({ latitude: r.latitude, longitude: r.longitude });
-                        const g = rev[0] || {};
-                        const label = [g.name, g.street, g.district, g.city, g.region].filter(Boolean).join(", ");
-                        return { label, latitude: r.latitude, longitude: r.longitude, city: g.city || g.region || null };
-                    })
-                );
-                setResults(named);
-            } catch { setResults([]); }
-            finally { setSearchLoading(false); }
-        }, 600);
+                const named = await searchPlaces(text, { style: "short" });
+                if (seq === searchSeq.current) setResults(named);
+            } catch { if (seq === searchSeq.current) setResults([]); }
+            finally { if (seq === searchSeq.current) setSearchLoading(false); }
+        }, 450);
     };
 
     // ── Auto-detect (main card) ───────────────────────────────────────────────
@@ -114,23 +116,19 @@ export default function NotServiceableScreen({ onRetry }) {
         setResults([]);
         setQuery("");
         try {
-            const { status } = await Location.requestForegroundPermissionsAsync();
-            if (status !== "granted") {
+            const { latitude, longitude } = await getFastPosition();
+            // Address + serviceability in parallel (checkAndDispatch hits the cached service).
+            const [g] = await Promise.all([
+                reverseGeocode(latitude, longitude),
+                checkAndDispatch(latitude, longitude, null),
+            ]);
+            if (g) setQuery(formatAddress(g, "short"));
+        } catch (err) {
+            if (err?.message === "permission_denied") {
                 setStatusMsg({ type: "error", text: "Location permission denied. Please search manually." });
-                return;
+            } else {
+                setStatusMsg({ type: "error", text: "Could not detect location. Try searching manually." });
             }
-            const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-            const { latitude, longitude } = loc.coords;
-            const geo = await Location.reverseGeocodeAsync({ latitude, longitude });
-            let detectedCity = null;
-            if (geo.length > 0) {
-                const g = geo[0];
-                setQuery([g.street, g.district, g.city, g.region].filter(Boolean).join(", "));
-                detectedCity = g.city || g.region || null;
-            }
-            await checkAndDispatch(latitude, longitude, detectedCity);
-        } catch {
-            setStatusMsg({ type: "error", text: "Could not detect location. Try searching manually." });
         } finally { setDetectLoading(false); }
     };
 
@@ -148,15 +146,16 @@ export default function NotServiceableScreen({ onRetry }) {
         setChecking(true);
         setStatusMsg(null);
         try {
-            const axiosClient = await getAxios();
-            const res = await axiosClient.post("/api/service-areas/check", { latitude, longitude });
-            const ok = res.data?.serviceable ?? false;
+            const data = await checkServiceability(latitude, longitude);
+            const ok = data?.serviceable ?? false;
             if (ok) {
                 setStatusMsg({ type: "success", text: "Great news! We service this area. Loading…" });
-                const resolvedCity = detectedCity || res.data?.area || null;
+                // Prefer the geocoded city; fall back to the service-area name.
+                const resolvedCity =
+                    detectedCity || cityOf(await reverseGeocode(latitude, longitude)) || data?.area || null;
                 dispatch(setServiceable({ coords: { latitude, longitude }, city: resolvedCity }));
             } else {
-                setStatusMsg({ type: "error", text: res.data?.message || "Sorry, we don't service this area yet." });
+                setStatusMsg({ type: "error", text: data?.message || "Sorry, we don't service this area yet." });
             }
         } catch {
             setStatusMsg({ type: "error", text: "Could not check serviceability. Please try again." });
@@ -180,85 +179,81 @@ export default function NotServiceableScreen({ onRetry }) {
         setMapCityText("");
 
         try {
-            const { status } = await Location.requestForegroundPermissionsAsync();
-            if (status === "granted") {
-                const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-                const { latitude, longitude } = loc.coords;
-                setMapRegion({ latitude, longitude, latitudeDelta: 0.01, longitudeDelta: 0.01 });
-                setPinCoords({ latitude, longitude });
-                const geo = await Location.reverseGeocodeAsync({ latitude, longitude });
-                if (geo.length > 0) {
-                    const g = geo[0];
-                    setMapLocationText([g.street, g.district, g.city, g.region].filter(Boolean).join(", "));
-                    setMapCityText(g.city || g.region || "");
-                }
-                checkMapArea(latitude, longitude);
+            const { latitude, longitude } = await getFastPosition();
+            setMapRegion({ latitude, longitude, latitudeDelta: 0.01, longitudeDelta: 0.01 });
+            setPinCoords({ latitude, longitude });
+            const [g] = await Promise.all([
+                reverseGeocode(latitude, longitude),
+                checkMapArea(latitude, longitude),
+            ]);
+            if (g) {
+                setMapLocationText(formatAddress(g, "short"));
+                setMapCityText(cityOf(g));
             }
         } catch { /* fall through — user can drag manually */ }
     };
 
     // ── Map: check serviceability ─────────────────────────────────────────────
     const checkMapArea = async (lat, lng) => {
+        const seq = ++mapCheckSeq.current;
         setMapChecking(true);
         setMapStatusMsg(null);
         setMapIsServiceable(null);
         try {
-            const axiosClient = await getAxios();
-            const res = await axiosClient.post("/api/service-areas/check", { latitude: lat, longitude: lng });
-            const ok = res.data?.serviceable ?? false;
+            const data = await checkServiceability(lat, lng);
+            if (seq !== mapCheckSeq.current) return;
+            const ok = data?.serviceable ?? false;
             setMapIsServiceable(ok);
             if (!ok) {
-                setMapStatusMsg({ type: "error", text: res.data?.message || "Sorry, we don't service this area yet." });
+                setMapStatusMsg({ type: "error", text: data?.message || "Sorry, we don't service this area yet." });
             } else {
                 setMapStatusMsg({ type: "success", text: "Area is serviceable! Tap Confirm." });
             }
         } catch {
+            if (seq !== mapCheckSeq.current) return;
             setMapIsServiceable(false);
             setMapStatusMsg({ type: "error", text: "Could not verify serviceability." });
         } finally {
-            setMapChecking(false);
+            if (seq === mapCheckSeq.current) setMapChecking(false);
         }
     };
 
     // ── Map: drag end ─────────────────────────────────────────────────────────
-    const handleMapRegionChangeComplete = async (region) => {
+    const handleMapRegionChangeComplete = (region) => {
         const { latitude, longitude } = region;
         setPinCoords({ latitude, longitude });
-        try {
-            const geo = await Location.reverseGeocodeAsync({ latitude, longitude });
-            if (geo.length > 0) {
-                const g = geo[0];
-                setMapLocationText([g.street, g.district, g.city, g.region].filter(Boolean).join(", "));
-                setMapCityText(g.city || g.region || "");
-            }
-        } catch { /* silent */ }
-        if (mapCheckTimeout.current) clearTimeout(mapCheckTimeout.current);
         setMapIsServiceable(null);
         setMapStatusMsg(null);
-        mapCheckTimeout.current = setTimeout(() => checkMapArea(latitude, longitude), 800);
+        // One debounced step per drag: address + serviceability fetched together.
+        if (mapCheckTimeout.current) clearTimeout(mapCheckTimeout.current);
+        const seq = ++mapDragSeq.current;
+        mapCheckTimeout.current = setTimeout(async () => {
+            const [g] = await Promise.all([
+                reverseGeocode(latitude, longitude),
+                checkMapArea(latitude, longitude),
+            ]);
+            if (seq !== mapDragSeq.current) return; // user dragged again meanwhile
+            if (g) {
+                setMapLocationText(formatAddress(g, "short"));
+                setMapCityText(cityOf(g));
+            }
+        }, 500);
     };
 
     // ── Map: search ───────────────────────────────────────────────────────────
     const handleMapSearchChange = (text) => {
         setMapSearchQuery(text);
         if (mapSearchTimeout.current) clearTimeout(mapSearchTimeout.current);
-        if (!text.trim()) { setMapSearchResults([]); return; }
+        if (!text.trim()) { mapSearchSeq.current++; setMapSearchResults([]); return; }
         mapSearchTimeout.current = setTimeout(async () => {
+            const seq = ++mapSearchSeq.current;
             setMapSearchLoading(true);
             try {
-                const geocoded = await Location.geocodeAsync(text);
-                const named = await Promise.all(
-                    geocoded.slice(0, 5).map(async (r) => {
-                        const rev = await Location.reverseGeocodeAsync({ latitude: r.latitude, longitude: r.longitude });
-                        const g = rev[0] || {};
-                        const label = [g.name, g.street, g.district, g.city, g.region].filter(Boolean).join(", ");
-                        return { label, latitude: r.latitude, longitude: r.longitude, city: g.city || g.region || null };
-                    })
-                );
-                setMapSearchResults(named);
-            } catch { setMapSearchResults([]); }
-            finally { setMapSearchLoading(false); }
-        }, 600);
+                const named = await searchPlaces(text, { style: "short" });
+                if (seq === mapSearchSeq.current) setMapSearchResults(named);
+            } catch { if (seq === mapSearchSeq.current) setMapSearchResults([]); }
+            finally { if (seq === mapSearchSeq.current) setMapSearchLoading(false); }
+        }, 450);
     };
 
     const handleMapSearchSelect = (result) => {

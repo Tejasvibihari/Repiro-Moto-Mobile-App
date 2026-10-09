@@ -17,12 +17,22 @@ const authPersistConfig = {
 
 const persistedAuthReducer = persistReducer(authPersistConfig, authReducer);
 
+// Persist only the last serviceability result (NOT `status`), so a cold start
+// can render immediately from cache while the check re-runs in the background.
+const locationPersistConfig = {
+    key: "location",
+    storage: AsyncStorage,
+    whitelist: ["coords", "city", "lastServiceable", "checkedAt"],
+};
+
+const persistedLocationReducer = persistReducer(locationPersistConfig, locationReducer);
+
 export const store = configureStore({
     reducer: {
         auth: persistedAuthReducer,
         theme: themeReducer,
         user: userReducer,
-        location: locationReducer,
+        location: persistedLocationReducer,
         notification: notificationReducer,
     },
     middleware: (getDefaultMiddleware) =>
