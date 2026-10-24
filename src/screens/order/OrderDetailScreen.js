@@ -37,6 +37,7 @@ import LiveTrackingCard from '../../components/orders/LiveTrackingCard';
 import useOrderTracking from '../../hooks/useOrderTracking';
 import { shareInvoicePdf, downloadInvoicePdf } from '../../utils/invoiceUtils';
 import { isBookingPolicyError } from '../../services/bookingAvailability';
+import { isSlotError } from '../../services/bookingTimeSlots';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -1794,13 +1795,14 @@ export default function OrderDetailScreen({ route, navigation }) {
     };
 
     const handleRescheduleSubmit = async ({ preferredDate, preferredTime, reason }) => {
+        setRescheduleError(null);   // so a repeated rejection re-triggers the sheet's slot refresh
         try {
             await rescheduleOrder(orderId, { preferredDate, preferredTime, reason });
             setRescheduleModalVisible(false);
             setRescheduleSuccessVisible(true);
         } catch (err) {
             const msg = err.response?.data?.message || 'Failed to reschedule booking';
-            if (isBookingPolicyError(err)) {
+            if (isBookingPolicyError(err) || isSlotError(err)) {
                 setRescheduleError(msg);
                 fetchOrderById(orderId).catch(() => { });
                 return;

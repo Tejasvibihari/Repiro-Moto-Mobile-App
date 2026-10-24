@@ -11,7 +11,9 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { checkBookingAvailability, isBookingPolicyError } from '../../services/bookingAvailability';
-import { BOOKING_TIME_SLOTS } from '../../services/bookingTimeSlots';
+import { isSlotError, getSlotErrorMessage } from '../../services/bookingTimeSlots';
+import useBookingSlots from '../../hooks/useBookingSlots';
+import TimeSlotPicker from './TimeSlotPicker';
 
 // Statuses in which a booking can still be rescheduled (mirrors the backend rule).
 export const RESCHEDULABLE_STATUSES = ['Pending', 'Mechanic Assigned'];
@@ -81,18 +83,25 @@ export default function RescheduleModal({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [visible]);
 
-    const isSlotPassed = (ymd, slot) => {
-        if (ymd !== toYmd(new Date())) return false;
-        return slot.h * 60 + slot.m <= new Date().getHours() * 60 + new Date().getMinutes();
-    };
+    // Admin-managed slots for the chosen day (with live availability)
+    const {
+        slots: timeSlots,
+        loading: slotsLoading,
+        error: slotsError,
+        reload: reloadSlots,
+    } = useBookingSlots(visible ? selectedYmd : null);
 
-    // If the chosen day changes and the chosen time is no longer valid, clear it
+    // The chosen time stops being bookable (day changed, slot filled up, admin edited slots) → clear it
     useEffect(() => {
-        if (!selectedYmd || !selectedTime) return;
-        const slot = BOOKING_TIME_SLOTS.find((s) => s.value === selectedTime);
-        if (slot && isSlotPassed(selectedYmd, slot)) setSelectedTime(null);
+        if (!selectedYmd || !selectedTime || slotsLoading || slotsError) return;
+        if (!timeSlots.some((slot) => slot.value === selectedTime && slot.available)) setSelectedTime(null);
+    }, [selectedYmd, selectedTime, timeSlots, slotsLoading, slotsError]);
+
+    // The caller reported a rejected reschedule (e.g. the slot was just taken) → refresh the grid
+    useEffect(() => {
+        if (visible && errorMessage && selectedYmd) reloadSlots();
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [selectedYmd]);
+    }, [errorMessage]);
 
     const currentYmd = isoToYmd(currentDate);
     const currentTimeNorm = normalizeTime(currentTime);
@@ -140,6 +149,12 @@ export default function RescheduleModal({
         try {
             await onSubmit({ preferredDate: selectedYmd, preferredTime: selectedTime, reason: reason.trim() });
         } catch (err) {
+            if (isSlotError(err)) {
+                setSelectedTime(null);
+                reloadSlots();
+                setAvailabilityError(getSlotErrorMessage(err));
+                return;
+            }
             if (isBookingPolicyError(err)) {
                 setUnavailableDates((prev) => ({ ...prev, [selectedYmd]: err.response.data }));
                 setAvailabilityError(err.response.data.message);
@@ -225,37 +240,20 @@ export default function RescheduleModal({
 
                         {/* Time slots */}
                         <Text style={[s.sectionLabel, { color: C.textMuted, marginTop: 16 }]}>NEW TIME SLOT</Text>
-                        {!selectedYmd ? (
-                            <Text style={[s.hint, { color: C.textMuted }]}>Pick a date first.</Text>
-                        ) : (
-                            <View style={s.timeWrap}>
-                                {BOOKING_TIME_SLOTS.map((slot) => {
-                                    const passed = isSlotPassed(selectedYmd, slot);
-                                    const selected = selectedTime === slot.value;
-                                    const isCurrent = selectedYmd === currentYmd && slot.value === currentTimeNorm;
-                                    const disabled = passed || dateUnavailable;
-                                    return (
-                                        <TouchableOpacity
-                                            key={slot.value}
-                                            disabled={disabled}
-                                            activeOpacity={0.8}
-                                            onPress={() => setSelectedTime(slot.value)}
-                                            style={[
-                                                s.timeChip,
-                                                {
-                                                    borderColor: selected ? C.primary : C.border,
-                                                    backgroundColor: selected ? C.primary : C.surfaceLow,
-                                                    opacity: disabled ? 0.35 : 1,
-                                                },
-                                            ]}
-                                        >
-                                            <Text style={[s.timeText, { color: selected ? '#1a1a1a' : C.textPrimary }]}>{slot.label}</Text>
-                                            {isCurrent && !selected && <Text style={[s.currentTag, { color: C.textMuted }]}>current</Text>}
-                                        </TouchableOpacity>
-                                    );
-                                })}
-                            </View>
-                        )}
+                        <TimeSlotPicker
+                            theme={theme}
+                            isDark={isDark}
+                            compact
+                            hasDate={!!selectedYmd}
+                            slots={timeSlots}
+                            loading={slotsLoading}
+                            error={slotsError}
+                            onRetry={reloadSlots}
+                            selected={selectedTime || ''}
+                            onSelect={setSelectedTime}
+                            disabled={dateUnavailable}
+                            currentValue={selectedYmd === currentYmd ? currentTimeNorm : ''}
+                        />
 
                         {/* Reason */}
                         <Text style={[s.sectionLabel, { color: C.textMuted, marginTop: 16 }]}>{reasonLabel.toUpperCase()}</Text>
@@ -320,16 +318,11 @@ const s = StyleSheet.create({
     currentLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 1 },
     currentValue: { fontSize: 13, fontWeight: '700', flexShrink: 1 },
     sectionLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 1.2, marginBottom: 8 },
-    hint: { fontSize: 12, fontStyle: 'italic' },
     dateRow: { gap: 8, paddingRight: 8 },
     dateChip: { width: 56, paddingVertical: 10, borderRadius: 16, borderWidth: 1.5, alignItems: 'center', gap: 2 },
     dateDay: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
     dateNum: { fontSize: 18, fontWeight: '900' },
     dateMonth: { fontSize: 10, fontWeight: '700' },
-    timeWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-    timeChip: { minWidth: 72, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1.5, alignItems: 'center' },
-    timeText: { fontSize: 13, fontWeight: '800' },
-    currentTag: { fontSize: 8, fontWeight: '700', marginTop: 1, textTransform: 'uppercase' },
     policyError: { fontSize: 12, lineHeight: 17, fontWeight: '600', marginTop: 8 },
     reasonInput: {
         minHeight: 64, borderWidth: 1, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10,

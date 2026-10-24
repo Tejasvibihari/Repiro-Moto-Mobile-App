@@ -34,7 +34,9 @@ import useBike from '../../hooks/useBikes';
 import useCoupon from '../../hooks/useCoupon';
 import { useShopStatus } from '../../context/ShopStatusContext';
 import { checkBookingAvailability, isBookingPolicyError } from '../../services/bookingAvailability';
-import { BOOKING_TIME_SLOTS } from '../../services/bookingTimeSlots';
+import { isSlotError, getSlotErrorMessage } from '../../services/bookingTimeSlots';
+import useBookingSlots from '../../hooks/useBookingSlots';
+import TimeSlotPicker from './TimeSlotPicker';
 import MapView, { PROVIDER_GOOGLE } from 'react-native-maps';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -94,15 +96,6 @@ const parseTimeToMinutes = (timeStr) => {
     if (modifier === 'PM' && hours !== 12) hours += 12;
     if (modifier === 'AM' && hours === 12) hours = 0;
     return hours * 60 + minutes;
-};
-
-// ─── Check if a time slot on a given date is already passed ─────────────────
-const isTimeSlotPassed = (date, timeSlotValue) => {
-    const now = new Date();
-    const slotDate = new Date(date);
-    const minutes = parseTimeToMinutes(timeSlotValue);
-    slotDate.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0);
-    return slotDate < now;
 };
 
 // ─── Check if a time slot on a given date is within the next hour ───────────
@@ -1221,14 +1214,13 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
     // Clear CC error when user types
     useEffect(() => { if (cc.trim()) setCcError(false); }, [cc]);
 
-    // ─── NEW: Filter time slots based on selected date ─────────────────────────
-    const getAvailableTimeSlots = useCallback(() => {
-        if (!preferredDate) return BOOKING_TIME_SLOTS;
-        const isToday = new Date().toDateString() === new Date(preferredDate).toDateString();
-        if (!isToday) return BOOKING_TIME_SLOTS;
-        // For today, filter out slots that have already passed
-        return BOOKING_TIME_SLOTS.filter(slot => !isTimeSlotPassed(preferredDate, slot.value));
-    }, [preferredDate]);
+    // ─── Time slots: the admin-managed list for the chosen date (with live availability) ──
+    const {
+        slots: timeSlots,
+        loading: slotsLoading,
+        error: slotsError,
+        reload: reloadSlots,
+    } = useBookingSlots(preferredDate, { refreshKey: availabilityRefreshKey });
 
     // ─── NEW: Auto‑set emergency if selected time is within next hour on today ──
     const handleTimeSelect = useCallback((timeValue) => {
@@ -1258,17 +1250,17 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
         }
     }, [emergencyAvailable, serviceType, emergencyBlockedMsg]);
 
-    // ─── NEW: When date changes, clear invalid time and reset emergency if needed ──
+    // If the chosen slot stops being bookable (it filled up, or the admin changed the slots
+    // while the form was open), clear it so the customer picks a valid one.
     useEffect(() => {
-        if (!preferredDate) return;
-        const available = getAvailableTimeSlots();
-        if (preferredTime && !available.some(slot => slot.value === preferredTime)) {
+        if (!preferredDate || !preferredTime || slotsLoading || slotsError) return;
+        const stillBookable = timeSlots.some((slot) => slot.value === preferredTime && slot.available);
+        if (!stillBookable) {
             setPreferredTime('');
-            // Optionally notify user
             setAlert({ type: 'warning', message: 'Selected time is no longer available. Please choose a new time slot.' });
             setTimeout(() => setAlert(null), 3000);
         }
-    }, [preferredDate, preferredTime, getAvailableTimeSlots]);
+    }, [preferredDate, preferredTime, timeSlots, slotsLoading, slotsError]);
 
     const animateToNext = useCallback(() => {
         Animated.timing(fadeAnim, { toValue: 0, duration: 120, useNativeDriver: true }).start(() => {
@@ -1408,6 +1400,14 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
         try {
             await onSubmit(payload);
         } catch (err) {
+            if (isSlotError(err)) {
+                // Someone else took the last place, or the admin changed the slots meanwhile.
+                setPreferredTime('');
+                reloadSlots();
+                setAlert({ type: 'error', message: getSlotErrorMessage(err) });
+                setStep(4);
+                return;
+            }
             if (isBookingPolicyError(err)) {
                 setAvailabilityError(err.response.data);
                 setUnavailableDates((prev) => ({ ...prev, [preferredDate]: err.response.data }));
@@ -1420,7 +1420,6 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
 
     const currentStep = STEPS[step];
     const isLastStep = step === STEPS.length - 1;
-    const availableTimeSlots = getAvailableTimeSlots();
     const dateUnavailable = step === 4 && !!preferredDate && (
         !!unavailableDates[preferredDate] || checkingDate === preferredDate
     );
@@ -1552,30 +1551,18 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
                                 </Text>
                             )}
                             <Text style={[labelStyle(theme), { marginTop: 24, marginBottom: 14 }]}>Choose a Time Slot</Text>
-                            {availableTimeSlots.length === 0 && preferredDate && (
-                                <View style={{ padding: 16, backgroundColor: theme.colors.warning + '20', borderRadius: 12, marginBottom: 16 }}>
-                                    <Text style={{ fontSize: 13, color: theme.colors.warning, fontWeight: '600' }}>
-                                        No available time slots for the selected date. Please choose another date.
-                                    </Text>
-                                </View>
-                            )}
-                            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-                                {availableTimeSlots.map((slot) => {
-                                    const isSelected = preferredTime === slot.value;
-                                    const timeDisabled = dateUnavailable;
-                                    return (
-                                        <TouchableOpacity
-                                            key={slot.value}
-                                            onPress={() => handleTimeSelect(slot.value)}
-                                            disabled={timeDisabled}
-                                            activeOpacity={0.8}
-                                            style={{ width: '30%', paddingVertical: 11, borderRadius: 14, borderWidth: 1.5, borderColor: isSelected ? theme.colors.primary : theme.colors.border, backgroundColor: isSelected ? theme.colors.primary : isDark ? theme.colors.surfaceLow : '#FFF', alignItems: 'center', justifyContent: 'center', opacity: timeDisabled ? 0.35 : 1 }}
-                                        >
-                                            <Text style={{ fontSize: 12.5, fontWeight: isSelected ? '800' : '600', color: isSelected ? '#1a1a1a' : theme.colors.textSecondary, letterSpacing: 0.2 }}>{slot.label}</Text>
-                                        </TouchableOpacity>
-                                    );
-                                })}
-                            </View>
+                            <TimeSlotPicker
+                                theme={theme}
+                                isDark={isDark}
+                                hasDate={!!preferredDate}
+                                slots={timeSlots}
+                                loading={slotsLoading}
+                                error={slotsError}
+                                onRetry={reloadSlots}
+                                selected={preferredTime}
+                                onSelect={handleTimeSelect}
+                                disabled={dateUnavailable}
+                            />
                             {preferredDate && preferredTime && (
                                 <View style={{ marginTop: 20, padding: 16, borderRadius: 16, backgroundColor: theme.colors.primary + '18', borderWidth: 1, borderColor: theme.colors.primary + '44', flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                                     <Ionicons name="calendar-outline" size={20} color={theme.colors.primary} />

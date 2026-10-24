@@ -22,6 +22,7 @@ import { useSelector } from 'react-redux';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LightTheme, DarkTheme } from '../../styles/Theme';
+import { SUPPORT_PHONE_E164 } from '../../constants/contact';
 
 const formatReopen = (iso) => {
     if (!iso) return '';
@@ -67,7 +68,7 @@ export default function ShopClosedScreen({ status, onRetry, checking }) {
     }, []);
 
     const reopen = formatReopen(status?.reopenAt);
-    const phone = (status?.contactNo || '').replace(/[^\d+]/g, '');
+    const phone = SUPPORT_PHONE_E164; // fixed customer-care number
 
     return (
         <View style={[styles.root, { backgroundColor: C.background }]} pointerEvents="auto">

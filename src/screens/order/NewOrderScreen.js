@@ -11,6 +11,7 @@ import axiosClient from '../../services/axiosClient';
 import { useShopStatus } from '../../context/ShopStatusContext';
 import { LightTheme, DarkTheme } from '../../styles/Theme';
 import { isBookingPolicyError } from '../../services/bookingAvailability';
+import { isSlotError } from '../../services/bookingTimeSlots';
 
 export default function NewOrderScreen() {
     const navigation = useNavigation();
@@ -41,7 +42,8 @@ export default function NewOrderScreen() {
             // last poll — resync so the closed screen or the disabled toggle appears right away.
             const code = err.response?.data?.code;
             if (code === 'SHOP_CLOSED' || code === 'EMERGENCY_UNAVAILABLE') refreshShopStatus();
-            if (isBookingPolicyError(err)) throw err;
+            // Date / slot rejections are handled inside the form (it reopens the schedule step).
+            if (isBookingPolicyError(err) || isSlotError(err)) throw err;
             setErrorMsg(err.response?.data?.message || err.message || 'Failed to place order.');
             setErrorPopup(true);
         } finally {

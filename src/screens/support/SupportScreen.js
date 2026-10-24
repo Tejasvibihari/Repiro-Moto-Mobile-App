@@ -17,12 +17,12 @@ import Loader from '../../components/common/Loader';
 import SupportOrderCard from '../../components/support/SupportOrderCard';
 import useOrder from '../../hooks/useOrder';
 import { useNavigation } from '@react-navigation/native';
+import { SUPPORT_PHONE_DISPLAY, SUPPORT_TEL_URL } from '../../constants/contact';
 
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const WHATSAPP_NUMBER = '919876543210'; // replace with your actual support number (country code + number)
 const SUPPORT_EMAIL = 'support@repairomoto.in';
-const SUPPORT_PHONE = '+91 98765 43210';
 
 const QUICK_LINKS = [
     {
@@ -41,14 +41,14 @@ const QUICK_LINKS = [
         color: '#5B9CF6',
         onPress: () => Linking.openURL(`mailto:${SUPPORT_EMAIL}`),
     },
-    // {
-    //     id: 'call',
-    //     icon: 'call-outline',
-    //     label: 'Call Us',
-    //     sub: SUPPORT_PHONE,
-    //     color: '#2ECC9A',
-    //     onPress: () => Linking.openURL(`tel:${SUPPORT_PHONE}`),
-    // },
+    {
+        id: 'call',
+        icon: 'call-outline',
+        label: 'Call Us',
+        sub: SUPPORT_PHONE_DISPLAY,
+        color: '#2ECC9A',
+        onPress: () => Linking.openURL(SUPPORT_TEL_URL),
+    },
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
