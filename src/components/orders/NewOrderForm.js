@@ -32,6 +32,8 @@ import { useMovedFromPoint } from '../../hooks/useMovedFromPoint';
 import Alert from '../../components/common/Alert';
 import useBike from '../../hooks/useBikes';
 import useCoupon from '../../hooks/useCoupon';
+import useServicePricing from '../../hooks/useServicePricing';
+import { formatINR, formatMinutes } from '../../utils/priceUtils';
 import { useShopStatus } from '../../context/ShopStatusContext';
 import { checkBookingAvailability, isBookingPolicyError } from '../../services/bookingAvailability';
 import { isSlotError, getSlotErrorMessage } from '../../services/bookingTimeSlots';
@@ -88,6 +90,8 @@ const getServiceLabel = (id) => {
     const found = [...SERVICE_TYPES, ...QUICK_SERVICES].find(s => s.id === id);
     return found ? found.label.replace('\n', ' ') : id;
 };
+
+const STATIC_SERVICE_IDS = [...SERVICE_TYPES, ...QUICK_SERVICES].map((s) => s.id);
 
 // ─── Helper: parse time string "HH:MM AM/PM" into minutes since midnight ─────
 const parseTimeToMinutes = (timeStr) => {
@@ -198,12 +202,21 @@ function StyledInput({ value, onChangeText, placeholder, keyboardType, multiline
 }
 
 // ─── Service step ─────────────────────────────────────────────────────────────
-function ServiceStep({ theme, isDark, selectedServices, setSelectedServices, otherServiceText, setOtherServiceText }) {
-    const ALL_SERVICE_IDS = [...SERVICE_TYPES.map(s => s.id), ...QUICK_SERVICES.map(s => s.id)];
+// Shows the services (and prices) admin configured for the chosen brand + model, fetched live.
+// Bikes without a price list (model "Other", nothing configured yet, or the request failed) fall
+// back to the generic list below, which has no prices.
+function ServiceStep({ theme, isDark, bikeLabel, pricing, selectedServices, setSelectedServices, otherServiceText, setOtherServiceText }) {
+    const priced = pricing.services;
+    const isDynamic = priced.length > 0;
 
     const toggleService = (serviceId) => {
         if (serviceId === 'other') {
-            setSelectedServices(['other']);
+            // Tapping "Other" again deselects it; tapping it otherwise makes it the only selection.
+            if (selectedServices.includes('other')) {
+                setSelectedServices([]);
+            } else {
+                setSelectedServices(['other']);
+            }
             setOtherServiceText('');
         } else {
             setSelectedServices(prev => {
@@ -219,8 +232,130 @@ function ServiceStep({ theme, isDark, selectedServices, setSelectedServices, oth
 
     const isOtherSelected = selectedServices.includes('other');
 
+    const otherBox = isOtherSelected && (
+        <View style={{ marginTop: 4, padding: 16, borderRadius: 18, borderWidth: 1.5, borderColor: '#9B8EA8' + '66', backgroundColor: isDark ? theme.colors.surfaceLow : '#FAF8FF' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+                <Ionicons name="create-outline" size={16} color="#9B8EA8" />
+                <Text style={{ fontSize: 12, fontWeight: '700', letterSpacing: 0.6, color: '#9B8EA8', textTransform: 'uppercase' }}>Describe your service</Text>
+            </View>
+            <StyledInput
+                value={otherServiceText}
+                onChangeText={setOtherServiceText}
+                placeholder="e.g. Chain replacement, tyre change, clutch repair…"
+                multiline
+                numberOfLines={3}
+                theme={theme}
+                isDark={isDark}
+            />
+        </View>
+    );
+
+    // ── Loading the price list ──────────────────────────────────────────────
+    if (pricing.loading) {
+        return (
+            <View style={{ alignItems: 'center', paddingVertical: 48, gap: 12 }}>
+                <ActivityIndicator size="large" color={theme.colors.primary} />
+                <Text style={{ fontSize: 13, color: theme.colors.textMuted, fontWeight: '600' }}>
+                    Fetching service prices for {bikeLabel}…
+                </Text>
+            </View>
+        );
+    }
+
+    // ── Dynamic, priced list ────────────────────────────────────────────────
+    if (isDynamic) {
+        const picked = priced.filter((svc) => selectedServices.includes(svc._id));
+        const total = picked.reduce((sum, svc) => sum + (Number(svc.price) || 0), 0);
+        const minutes = picked.reduce((sum, svc) => sum + (Number(svc.estimatedMinutes) || 0), 0);
+
+        return (
+            <View>
+                <Text style={[labelStyle(theme), { marginBottom: 4 }]}>
+                    Services for {bikeLabel}
+                </Text>
+                <Text style={{ fontSize: 12, color: theme.colors.textMuted, marginBottom: 14 }}>
+                    Select one or more. Prices are estimates for your bike.
+                </Text>
+
+                <View style={{ gap: 10, marginBottom: 14 }}>
+                    {priced.map((svc) => (
+                        <PricedServiceCard
+                            key={svc._id}
+                            svc={svc}
+                            selected={selectedServices.includes(svc._id)}
+                            onPress={() => toggleService(svc._id)}
+                            theme={theme}
+                            isDark={isDark}
+                        />
+                    ))}
+
+                    <TouchableOpacity
+                        activeOpacity={0.8}
+                        onPress={() => toggleService('other')}
+                        style={{
+                            flexDirection: 'row', alignItems: 'center', gap: 12,
+                            borderWidth: 1.5, borderRadius: 16, padding: 14,
+                            borderColor: isOtherSelected ? '#9B8EA8' : theme.colors.border,
+                            backgroundColor: isOtherSelected ? '#9B8EA8' + (isDark ? '22' : '15') : isDark ? theme.colors.surfaceLow : '#FFF',
+                        }}
+                    >
+                        <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#9B8EA8' + '20', alignItems: 'center', justifyContent: 'center' }}>
+                            <Ionicons name="ellipsis-horizontal-outline" size={20} color="#9B8EA8" />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 14, fontWeight: '800', color: isOtherSelected ? '#9B8EA8' : theme.colors.textPrimary }}>Other</Text>
+                            <Text style={{ fontSize: 12, color: theme.colors.textMuted, marginTop: 2 }}>Something not listed? Describe it — the mechanic will quote after inspection.</Text>
+                        </View>
+                        {isOtherSelected && <Ionicons name="checkmark-circle" size={20} color="#9B8EA8" />}
+                    </TouchableOpacity>
+                </View>
+
+                {otherBox}
+
+                {picked.length > 0 && !isOtherSelected && (
+                    <View style={{ marginTop: 6, padding: 16, borderRadius: 16, backgroundColor: theme.colors.primary + '18', borderWidth: 1, borderColor: theme.colors.primary + '44' }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                            <View>
+                                <Text style={{ fontSize: 11, fontWeight: '800', letterSpacing: 0.8, color: theme.colors.textMuted, textTransform: 'uppercase' }}>Estimated cost</Text>
+                                <Text style={{ fontSize: 11, color: theme.colors.textMuted, marginTop: 2 }}>
+                                    {picked.length} service{picked.length > 1 ? 's' : ''} · approx. {formatMinutes(minutes)}
+                                </Text>
+                            </View>
+                            <Text style={{ fontSize: 24, fontWeight: '900', color: theme.colors.primary }}>{formatINR(total)}</Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, marginTop: 10 }}>
+                            <Ionicons name="information-circle-outline" size={14} color={theme.colors.textMuted} style={{ marginTop: 1 }} />
+                            <Text style={{ flex: 1, fontSize: 11, lineHeight: 16, color: theme.colors.textMuted }}>
+                                This is an estimate, not the final bill. The actual cost may increase or decrease depending on the repair and any parts needed.
+                            </Text>
+                        </View>
+                    </View>
+                )}
+            </View>
+        );
+    }
+
+    // ── Fallback: generic list without prices ───────────────────────────────
     return (
         <View>
+            {(pricing.error || (bikeLabel && !pricing.loading)) && (
+                <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 12, borderRadius: 12, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: isDark ? theme.colors.surfaceLow : '#FFF8EC', marginBottom: 16 }}>
+                    <Ionicons name="information-circle-outline" size={15} color={theme.colors.textMuted} style={{ marginTop: 1 }} />
+                    <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 12, lineHeight: 17, color: theme.colors.textMuted }}>
+                            {pricing.error
+                                ? 'We could not load service prices right now. You can still book — the mechanic will quote after inspection.'
+                                : 'Prices are not listed for this bike yet. You can still book — the mechanic will quote after inspection.'}
+                        </Text>
+                        {pricing.error && (
+                            <TouchableOpacity onPress={pricing.reload} style={{ marginTop: 6 }}>
+                                <Text style={{ fontSize: 12, fontWeight: '800', color: theme.colors.primary }}>Retry</Text>
+                            </TouchableOpacity>
+                        )}
+                    </View>
+                </View>
+            )}
+
             <Text style={[labelStyle(theme), { marginBottom: 12 }]}>
                 What services do you need?{'  '}
                 <Text style={{ color: theme.colors.textMuted, fontWeight: 'normal', textTransform: 'none' }}>(select one or more)</Text>
@@ -309,24 +444,51 @@ function ServiceStep({ theme, isDark, selectedServices, setSelectedServices, oth
                 </>
             )}
 
-            {isOtherSelected && (
-                <View style={{ marginTop: 4, padding: 16, borderRadius: 18, borderWidth: 1.5, borderColor: '#9B8EA8' + '66', backgroundColor: isDark ? theme.colors.surfaceLow : '#FAF8FF' }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                        <Ionicons name="create-outline" size={16} color="#9B8EA8" />
-                        <Text style={{ fontSize: 12, fontWeight: '700', letterSpacing: 0.6, color: '#9B8EA8', textTransform: 'uppercase' }}>Describe your service</Text>
-                    </View>
-                    <StyledInput
-                        value={otherServiceText}
-                        onChangeText={setOtherServiceText}
-                        placeholder="e.g. Chain replacement, tyre change, clutch repair…"
-                        multiline
-                        numberOfLines={3}
-                        theme={theme}
-                        isDark={isDark}
-                    />
-                </View>
-            )}
+            {otherBox}
         </View>
+    );
+}
+
+// One priced service row: name, description, approximate time and the estimated price.
+function PricedServiceCard({ svc, selected, disabled, onPress, theme, isDark }) {
+    const accent = theme.colors.primary;
+    return (
+        <TouchableOpacity
+            activeOpacity={0.8}
+            onPress={onPress}
+            disabled={disabled}
+            style={{
+                flexDirection: 'row',
+                alignItems: 'center',
+                gap: 12,
+                borderWidth: 1.5,
+                borderRadius: 16,
+                padding: 14,
+                borderColor: selected ? accent : theme.colors.border,
+                backgroundColor: selected ? accent + (isDark ? '22' : '15') : isDark ? theme.colors.surfaceLow : '#FFF',
+                opacity: disabled ? 0.5 : 1,
+            }}
+        >
+            <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: accent + (selected ? '25' : '15'), alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name={selected ? 'checkmark' : 'construct-outline'} size={20} color={selected ? accent : theme.colors.textMuted} />
+            </View>
+            <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 14, fontWeight: '800', color: selected ? accent : theme.colors.textPrimary }} numberOfLines={2}>{svc.name}</Text>
+                {!!svc.description && (
+                    <Text style={{ fontSize: 12, lineHeight: 17, color: theme.colors.textMuted, marginTop: 2 }} numberOfLines={2}>{svc.description}</Text>
+                )}
+                {svc.estimatedMinutes > 0 && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 }}>
+                        <Ionicons name="time-outline" size={12} color={theme.colors.textMuted} />
+                        <Text style={{ fontSize: 11, fontWeight: '600', color: theme.colors.textMuted }}>≈ {formatMinutes(svc.estimatedMinutes)}</Text>
+                    </View>
+                )}
+            </View>
+            <View style={{ alignItems: 'flex-end' }}>
+                <Text style={{ fontSize: 16, fontWeight: '900', color: selected ? accent : theme.colors.textPrimary }}>{formatINR(svc.price)}</Text>
+                <Text style={{ fontSize: 10, fontWeight: '600', color: theme.colors.textMuted, marginTop: 1 }}>estimate</Text>
+            </View>
+        </TouchableOpacity>
     );
 }
 
@@ -1173,6 +1335,45 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
     const [appliedCoupon, setAppliedCoupon] = useState(null); // verified coupon summary
     const [couponError, setCouponError] = useState(null);
 
+    // Service prices for the chosen bike (admin-managed, per brand + model), fetched live.
+    const pricing = useServicePricing({ brand, model });
+    const bikeLabel = `${brand} ${model}`.trim();
+
+    // selectedServices holds Service _ids while a priced list is shown, and the generic ids
+    // ('general_service', 'other', …) otherwise. Re-map it whenever the list for the bike changes
+    // (bike changed, or the dashboard pre-selected a generic service such as 'oil_change').
+    useEffect(() => {
+        if (!pricing.ready) return;
+        setSelectedServices((prev) => {
+            const next = [];
+            const push = (id) => { if (!next.includes(id)) next.push(id); };
+            if (pricing.services.length > 0) {
+                const ids = new Set(pricing.services.map((svc) => svc._id));
+                prev.forEach((id) => {
+                    if (id === 'other' || ids.has(id)) { push(id); return; }
+                    if (STATIC_SERVICE_IDS.includes(id)) {
+                        const label = getServiceLabel(id).trim().toLowerCase();
+                        const match = pricing.services.find((svc) => svc.name.trim().toLowerCase() === label);
+                        if (match) push(match._id);
+                    }
+                });
+            } else {
+                prev.forEach((id) => { if (id === 'other' || STATIC_SERVICE_IDS.includes(id)) push(id); });
+            }
+            const unchanged = next.length === prev.length && next.every((id, i) => id === prev[i]);
+            return unchanged ? prev : next;
+        });
+    }, [pricing.ready, pricing.services]);
+
+    const pickedPriced = selectedServices
+        .map((id) => pricing.services.find((svc) => svc._id === id))
+        .filter(Boolean);
+    const estimatedTotal = pickedPriced.reduce((sum, svc) => sum + (Number(svc.price) || 0), 0);
+    const serviceName = (id) => {
+        if (id === 'other') return otherServiceText.trim();
+        return pricing.services.find((svc) => svc._id === id)?.name || getServiceLabel(id);
+    };
+
     const checkDate = useCallback(async (date) => {
         setCheckingDate(date);
         setAvailabilityError(null);
@@ -1365,10 +1566,7 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
         }
 
         const finalModel = model === 'Other' ? customModel.trim() : model;
-        const finalServices = selectedServices.map(id => {
-            if (id === 'other') return otherServiceText.trim();
-            return getServiceLabel(id);
-        }).filter(Boolean);
+        const finalServices = selectedServices.map(serviceName).filter(Boolean);
         const payload = {
             name: name.trim(),
             email: user?.email || '',
@@ -1385,6 +1583,8 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
             cc: cc,
             bs: bsStandard,
             services: finalServices,
+            // Only the ids go up — the server looks the prices up itself and stores the estimate.
+            serviceIds: pickedPriced.map((svc) => svc._id),
             serviceType: serviceType,
             otherService: selectedServices.includes('other') ? otherServiceText.trim() : '',
             preferredDate,
@@ -1534,6 +1734,8 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
                     {step === 3 && (
                         <ServiceStep
                             theme={theme} isDark={isDark}
+                            bikeLabel={bikeLabel}
+                            pricing={pricing}
                             selectedServices={selectedServices}
                             setSelectedServices={setSelectedServices}
                             otherServiceText={otherServiceText}
@@ -1588,13 +1790,18 @@ export default function NewOrderForm({ onSubmit, onCancel, initialServiceType = 
                                     <SummaryRow
                                         icon="construct-outline"
                                         label="Service"
-                                        value={selectedServices.map(id => {
-                                            if (id === 'other') return otherServiceText.trim() || 'Other';
-                                            return getServiceLabel(id);
-                                        }).join(', ')}
+                                        value={selectedServices.map(id => serviceName(id) || 'Other').join(', ')}
                                         theme={theme}
                                     />
+                                    {estimatedTotal > 0 && (
+                                        <SummaryRow icon="cash-outline" label="Estimated Cost" value={`${formatINR(estimatedTotal)} (approx.)`} theme={theme} />
+                                    )}
                                     <SummaryRow icon="calendar-outline" label="Schedule" value={`${preferredDate} · ${preferredTime}`} theme={theme} />
+                                    {estimatedTotal > 0 && (
+                                        <Text style={{ fontSize: 11, lineHeight: 16, color: theme.colors.textMuted, marginTop: 2 }}>
+                                            The estimated cost is not the final bill — it may increase or decrease depending on the repair.
+                                        </Text>
+                                    )}
                                 </View>
                             </View>
 

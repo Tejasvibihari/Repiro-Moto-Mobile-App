@@ -26,6 +26,7 @@ import ScreenWrapper from '../../components/common/ScreenWrapper';
 import Loader from '../../components/common/Loader';
 import { MechanicCard, VendorCard } from '../../components/orders/MechanicCard';
 import CouponCard from '../../components/orders/CouponCard';
+import EstimatedCostCard from '../../components/orders/EstimatedCostCard';
 import useOrder from '../../hooks/useOrder';
 import RescheduleModal, { canRescheduleStatus } from '../../components/orders/RescheduleModal';
 import PopUp from '../../components/common/PopUp';
@@ -1947,6 +1948,9 @@ export default function OrderDetailScreen({ route, navigation }) {
                     isDark={isDark}
                     onChanged={() => fetchOrderById(orderId)}
                 />
+
+                {/* Estimate saved at booking time — not the bill; the final amount is below once invoiced */}
+                <EstimatedCostCard estimatedCost={order.estimatedCost} C={C} isDark={isDark} />
 
                 {/* Financial summary */}
                 <FinancialSummaryCard
