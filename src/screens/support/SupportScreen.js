@@ -21,8 +21,8 @@ import { SUPPORT_PHONE_DISPLAY, SUPPORT_TEL_URL } from '../../constants/contact'
 
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const WHATSAPP_NUMBER = '919876543210'; // replace with your actual support number (country code + number)
-const SUPPORT_EMAIL = 'support@repairomoto.in';
+const WHATSAPP_NUMBER = '919876543210';
+const SUPPORT_EMAIL = 'repairomoto@gmail.com';
 
 const QUICK_LINKS = [
     {

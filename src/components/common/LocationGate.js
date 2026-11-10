@@ -1,5 +1,6 @@
-import React from "react";
-import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import React, { useCallback, useEffect, useRef } from "react";
+import { View, Text, StyleSheet, TouchableOpacity, AppState, Linking } from "react-native";
+import * as Location from "expo-location";
 import { useSelector } from "react-redux";
 import { LightTheme, DarkTheme } from "../../styles/Theme";
 import { Ionicons } from "@expo/vector-icons";
@@ -13,6 +14,36 @@ export default function LocationGate({ children }) {
     const mode = useSelector((s) => s.theme.mode);
     const theme = mode === "dark" ? DarkTheme : LightTheme;
     const insets = useSafeAreaInsets();
+    const waitingForSettings = useRef(false);
+
+    // "Grant & Retry":
+    //  - permission can still be asked  -> show the system dialog (via retry)
+    //  - permission permanently denied  -> the OS will not show a dialog any
+    //    more, so open the app's Settings page instead
+    const handleGrantAndRetry = useCallback(async () => {
+        try {
+            const perm = await Location.getForegroundPermissionsAsync();
+            if (perm.status !== "granted" && perm.canAskAgain === false) {
+                waitingForSettings.current = true;
+                await Linking.openSettings();
+                return;
+            }
+        } catch (e) {
+            // fall through to a normal retry
+        }
+        retry();
+    }, [retry]);
+
+    // When the user returns from Settings, re-check automatically.
+    useEffect(() => {
+        const sub = AppState.addEventListener("change", (next) => {
+            if (next === "active" && waitingForSettings.current) {
+                waitingForSettings.current = false;
+                retry();
+            }
+        });
+        return () => sub.remove();
+    }, [retry]);
 
     if (status === "idle" || status === "checking") {
         return (
@@ -46,11 +77,11 @@ export default function LocationGate({ children }) {
                     Location Access Needed
                 </Text>
                 <Text style={[styles.errorSub, { color: theme.colors.textSecondary }]}>
-                    Please allow location permission so we can check if your area is serviceable.
+                    Please allow location permission so we can check if your area is serviceable. If the permission dialog doesn't appear, we'll open Settings so you can enable it.
                 </Text>
                 <TouchableOpacity
                     style={[styles.retryBtn, { backgroundColor: theme.colors.primary }]}
-                    onPress={retry}
+                    onPress={handleGrantAndRetry}
                     activeOpacity={0.8}
                 >
                     <Ionicons name="refresh-outline" size={18} color="#1a1a1a" />

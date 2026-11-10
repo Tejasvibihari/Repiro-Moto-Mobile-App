@@ -126,7 +126,7 @@ const SECTIONS = [
             'Your location is used only during active bookings and is not stored permanently.',
             'We do not sell your personal data to third parties.',
             'Data may be shared with mechanics and payment partners solely to fulfil your booking.',
-            'You can request deletion of your account and data by contacting support@repairomoto.in.',
+            'You can request deletion of your account and data by contacting repairomoto@gmail.com',
         ],
     },
     {
